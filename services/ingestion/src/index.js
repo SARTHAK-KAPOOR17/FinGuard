@@ -1,5 +1,6 @@
 const { app, logger } = require('./app');
 const config = require('./config');
+const transactionService = require('./services/transaction.service');
 
 const server = app.listen(config.port, () => {
   logger.info(
@@ -11,11 +12,19 @@ const server = app.listen(config.port, () => {
 // Graceful shutdown handling
 let shuttingDown = false;
 
-function gracefulShutdown(signal) {
+async function gracefulShutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
 
   logger.info({ signal }, `${signal} received. Initiating graceful shutdown...`);
+
+  // Disconnect Kafka producer
+  try {
+    await transactionService.disconnect();
+    logger.info('Kafka producer disconnected during shutdown');
+  } catch (err) {
+    logger.error({ err: err.message }, 'Error disconnecting Kafka producer during shutdown');
+  }
 
   // Stop accepting new connections
   server.close((err) => {

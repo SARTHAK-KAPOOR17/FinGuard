@@ -166,11 +166,65 @@ function createProducer(kafkaClient, options = {}) {
     }
   }
 
+  /**
+   * Publishes a batch of topic messages in a single Kafka request.
+   *
+   * @param {object} params
+   * @param {Array<{topic: string, messages: Array<{key?: string, value: any, headers?: object}>}>} params.topicMessages
+   * @param {number} [params.acks=-1]
+   * @param {number} [params.timeout=30000]
+   */
+  async function sendBatch({ topicMessages, acks = -1, timeout = 30000 }) {
+    if (!connected) {
+      await connect();
+    }
+
+    if (!Array.isArray(topicMessages) || topicMessages.length === 0) {
+      throw new Error('Kafka producer sendBatch() requires a non-empty array of topicMessages');
+    }
+
+    const preparedBatch = topicMessages.map((tm) => {
+      if (!tm.topic || typeof tm.topic !== 'string') {
+        throw new Error('Each topicMessage in sendBatch must have a valid topic string');
+      }
+
+      const preparedMessages = (tm.messages || []).map((m) => {
+        let value = m.value;
+        if (typeof value === 'object' && value !== null && !Buffer.isBuffer(value)) {
+          value = JSON.stringify(value);
+        }
+        return {
+          key: m.key !== undefined && m.key !== null ? String(m.key) : null,
+          value,
+          headers: m.headers || {},
+        };
+      });
+
+      return {
+        topic: tm.topic,
+        messages: preparedMessages,
+      };
+    });
+
+    try {
+      const result = await producer.sendBatch({
+        topicMessages: preparedBatch,
+        acks,
+        timeout,
+      });
+      return result;
+    } catch (err) {
+      logger.error({ err: err.message }, 'Failed to publish batch messages to Kafka');
+      throw err;
+    }
+  }
+
   return {
     raw: producer,
     connect,
     disconnect,
     send,
+    sendBatch,
     isConnected: () => connected,
   };
 }

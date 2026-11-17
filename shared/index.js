@@ -1,10 +1,11 @@
 const constants = require('./constants');
 const { createLogger } = require('./logger');
 const {
+  MAX_BATCH_SIZE,
+  locationSchema,
   transactionSchema,
-  batchTransactionSchema,
   validateTransaction,
-  validateBatchTransactions,
+  validateBatchItems,
 } = require('./schemas/transaction.schema');
 const {
   createKafkaClient,
@@ -14,11 +15,12 @@ const {
 
 module.exports = {
   ...constants,
+  MAX_BATCH_SIZE,
   createLogger,
+  locationSchema,
   transactionSchema,
-  batchTransactionSchema,
   validateTransaction,
-  validateBatchTransactions,
+  validateBatchItems,
   createKafkaClient,
   createProducer,
   createConsumer,

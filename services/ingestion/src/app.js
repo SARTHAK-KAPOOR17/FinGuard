@@ -3,6 +3,7 @@ const pinoHttp = require('pino-http');
 const { createLogger } = require('@finguard/shared');
 const config = require('./config');
 const healthRoutes = require('./routes/health.route');
+const transactionRoutes = require('./routes/transaction.route');
 
 const logger = createLogger(config.serviceName);
 
@@ -23,6 +24,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.use('/health', healthRoutes);
+app.use('/transactions', transactionRoutes);
 
 // 404 Handler
 app.use((req, res) => {
