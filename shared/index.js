@@ -17,6 +17,11 @@ const {
   createProducer,
   createConsumer,
 } = require('./kafka');
+const {
+  createApiKeyMiddleware,
+  apiKeyAuth,
+  DEFAULT_ADMIN_API_KEY,
+} = require('./middlewares/api-key.middleware');
 
 module.exports = {
   ...constants,
@@ -32,4 +37,7 @@ module.exports = {
   createKafkaClient,
   createProducer,
   createConsumer,
+  createApiKeyMiddleware,
+  apiKeyAuth,
+  DEFAULT_ADMIN_API_KEY,
 };
