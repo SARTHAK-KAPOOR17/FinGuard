@@ -3,10 +3,12 @@ const {
   createProducer,
   validateTransaction,
   validateBatchItems,
+  createLogger,
   TOPICS,
 } = require('@finguard/shared');
 const config = require('../config');
-const { logger } = require('../app');
+
+const logger = createLogger(config.serviceName);
 
 class TransactionService {
   constructor(producer = null) {

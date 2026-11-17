@@ -123,10 +123,8 @@ class SimulatorRunner {
     console.log('------------------------------------------------------');
     console.log('Simulation starting in progress...\n');
 
-    // Pace simulation using micro-intervals (e.g. 50ms ticks)
-    const tickIntervalMs = 50;
-    const txnsPerTick = (this.targetRate * (tickIntervalMs / 1000));
-    let accumulator = 0;
+    // Dynamic wall-clock pacing to achieve precise target rate despite Windows timer jitter
+    const tickIntervalMs = 25;
     const inFlightRequests = [];
 
     const progressTimer = setInterval(() => {
@@ -138,12 +136,14 @@ class SimulatorRunner {
     }, 500);
 
     while (Date.now() < endTime && this.isRunning) {
-      accumulator += txnsPerTick;
-      const countToSend = Math.floor(accumulator);
+      const elapsedSec = (Date.now() - this.stats.startTime) / 1000;
+      const expectedTotal = Math.min(
+        this.targetRate * this.durationSeconds,
+        Math.floor(elapsedSec * this.targetRate)
+      );
+      const countToSend = Math.max(0, expectedTotal - this.stats.totalGenerated);
 
       if (countToSend > 0) {
-        accumulator -= countToSend;
-
         if (this.batchSize > 1) {
           // Send in batches
           const batchItems = [];
