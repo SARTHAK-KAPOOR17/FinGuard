@@ -2,13 +2,13 @@ const request = require('supertest');
 const { app } = require('../src/app');
 const { connectMongo, disconnectMongo } = require('../src/database/mongo');
 const { disconnectRedis } = require('../src/database/redis');
-const { DEFAULT_ADMIN_API_KEY } = require('@finguard/shared');
 
 describe('Rule Engine Service - HTTP Endpoints', () => {
   const testRuleId = `RULE_API_TEST_${Date.now()}`;
-  const validApiKey = DEFAULT_ADMIN_API_KEY;
+  const validApiKey = 'test-admin-secret-key-for-jest';
 
   beforeAll(async () => {
+    process.env.ADMIN_API_KEY = validApiKey;
     await connectMongo().catch(() => {});
   });
 

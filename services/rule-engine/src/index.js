@@ -1,6 +1,12 @@
 const { app, logger } = require('./app');
 const config = require('./config');
+const { assertApiKeyConfigured } = require('@finguard/shared');
 const ruleProcessorService = require('./services/rule-processor.service');
+
+// Enforce that ADMIN_API_KEY is configured before listening
+if (process.env.NODE_ENV !== 'test') {
+  assertApiKeyConfigured(process.env.ADMIN_API_KEY);
+}
 
 const server = app.listen(config.port, async () => {
   logger.info(

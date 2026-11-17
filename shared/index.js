@@ -20,7 +20,8 @@ const {
 const {
   createApiKeyMiddleware,
   apiKeyAuth,
-  DEFAULT_ADMIN_API_KEY,
+  assertApiKeyConfigured,
+  timingSafeCompare,
 } = require('./middlewares/api-key.middleware');
 
 module.exports = {
@@ -39,5 +40,6 @@ module.exports = {
   createConsumer,
   createApiKeyMiddleware,
   apiKeyAuth,
-  DEFAULT_ADMIN_API_KEY,
+  assertApiKeyConfigured,
+  timingSafeCompare,
 };

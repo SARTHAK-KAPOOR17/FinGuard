@@ -20,20 +20,26 @@ async function upsertAlert(flaggedPayload) {
 
   const highestSeverity = getHighestSeverity(flaggedPayload.matchedRules);
 
+  const rawTimestamp = flaggedPayload.timestamp ? new Date(flaggedPayload.timestamp) : null;
+  const parsedTimestamp = rawTimestamp && !isNaN(rawTimestamp.getTime()) ? rawTimestamp : new Date();
+
+  const rawFlaggedAt = flaggedPayload.flaggedAt ? new Date(flaggedPayload.flaggedAt) : null;
+  const parsedFlaggedAt = rawFlaggedAt && !isNaN(rawFlaggedAt.getTime()) ? rawFlaggedAt : new Date();
+
   const alertData = {
     alertId: flaggedPayload.alertId || crypto.randomUUID(),
     txnId: flaggedPayload.txnId,
     flaggedId: flaggedPayload.flaggedId || crypto.randomUUID(),
-    userId: flaggedPayload.userId,
-    amount: flaggedPayload.amount,
-    currency: flaggedPayload.currency,
-    merchant: flaggedPayload.merchant,
+    userId: flaggedPayload.userId || 'usr_unknown',
+    amount: typeof flaggedPayload.amount === 'number' ? flaggedPayload.amount : 0,
+    currency: flaggedPayload.currency || 'USD',
+    merchant: flaggedPayload.merchant || 'Unknown Merchant',
     location: flaggedPayload.location || {},
-    deviceId: flaggedPayload.deviceId,
-    timestamp: new Date(flaggedPayload.timestamp),
-    flaggedAt: new Date(flaggedPayload.flaggedAt || Date.now()),
-    matchedRules: flaggedPayload.matchedRules,
-    riskScore: flaggedPayload.riskScore,
+    deviceId: flaggedPayload.deviceId || 'dev_unknown',
+    timestamp: parsedTimestamp,
+    flaggedAt: parsedFlaggedAt,
+    matchedRules: Array.isArray(flaggedPayload.matchedRules) ? flaggedPayload.matchedRules : [],
+    riskScore: typeof flaggedPayload.riskScore === 'number' ? flaggedPayload.riskScore : 0,
     severity: highestSeverity,
     status: 'OPEN',
     notes: [],
