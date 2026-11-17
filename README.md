@@ -68,6 +68,13 @@ finguard/
   - **Redis Sliding-Window Velocity (`RULE_VELOCITY`)**: Tracks per-user frequency using Redis Sorted Sets (`ZADD`, `ZREMRANGEBYSCORE`, `ZCARD`) within a sliding window (default: > 5 txns in 10s) with TTL auto-expiration.
   - **Geo-Distance & Impossible Travel (`RULE_LOCATION_JUMP`)**: Haversine distance and implied speed calculation (> 900 km/h) with rapid country change detection. Gracefully handles user's first transaction without false positives.
   - **Atomic Runtime Reload**: Rebuilds `RuleEvaluator` instance atomically so no transaction evaluates against partial state. Triggers immediately via Redis Pub/Sub channel `rules:updated` or HTTP `PATCH /rules/:id`, plus a 60-second fallback poll.
+- [x] **Day 6: Complete Rules CRUD API & Advanced Validation**
+  - **Full REST CRUD Management**: `POST /rules`, `GET /rules`, `GET /rules/:id`, `PUT /rules/:id`, `DELETE /rules/:id`, `PATCH /rules/:id/toggle`.
+  - **Type-Specific Joi Validation**: Strict schemas for `amount_threshold`, `merchant_regex`, `velocity`, and `geo_jump` with structured fields only (disallowing arbitrary code injection and `eval()`).
+  - **ReDoS Protection**: Pattern compilation validation and AST vulnerability analysis via `safe-regex2` with length caps ($\le 500$ chars) rejecting catastrophic backtracking patterns.
+  - **Severity-Scaled Risk Scoring**: Scaled as `LOW: 25`, `MEDIUM: 50`, `HIGH: 75`, `CRITICAL: 90`, plus $+5$ bonus per extra matched rule (capped at 100).
+  - **Simulator User Pool Scaling**: Added `--users` flag (default 5,000) eliminating velocity false positives for normal users.
+  - **Pub/Sub Live Mutation**: Every CRUD and toggle operation broadcasts to Redis `rules:updated` for zero-downtime atomic engine reload. Verified live with new rule creation.
 
 ---
 
@@ -98,16 +105,21 @@ The Rule Engine runs on port `3002` and consumes `transactions.raw` in real-time
 
 ### Endpoints
 - `GET /health`: Service health and live processor metrics (total consumed, flagged, clean, malformed).
-- `GET /rules`: List of active fraud rules and configurations.
-- `PATCH /rules/:id`: Enable or disable specific fraud rules dynamically.
+- `POST /rules`: Create a new rule with type-specific Joi validation and ReDoS protection.
+- `GET /rules`: List all configured fraud rules from MongoDB.
+- `GET /rules/:id`: Fetch a single rule's complete configuration.
+- `PUT /rules/:id`: Update an existing rule's configuration.
+- `DELETE /rules/:id`: Delete a rule from MongoDB and atomically reload memory.
+- `PATCH /rules/:id/toggle`: Toggle rule active status (`enabled: true/false`).
+- `PATCH /rules/:id`: Partial rule update (convenience endpoint).
 
 ### Active Seed Rules
 | Rule ID | Type | Severity | Description | Default Threshold / Window |
 |---|---|---|---|---|
-| `RULE_LARGE_AMOUNT` | `THRESHOLD` | `HIGH` | Flags transactions with amount > threshold in USD | Amount > $10,000 USD |
-| `RULE_SUSPICIOUS_MERCHANT` | `REGEX` | `CRITICAL` | Flags transactions at luxury, offshore crypto, or casino merchants | Regex pattern match |
-| `RULE_VELOCITY` | `VELOCITY` | `HIGH` | Flags rapid bursts of transactions from a single user | > 5 txns within 10 seconds |
-| `RULE_LOCATION_JUMP` | `GEO_DISTANCE` | `CRITICAL` | Flags impossible travel between distant locations/countries | > 900 km/h or cross-country < 300s |
+| `RULE_LARGE_AMOUNT` | `amount_threshold` | `HIGH` | Flags transactions with amount > threshold in USD | Amount > $10,000 USD |
+| `RULE_SUSPICIOUS_MERCHANT` | `merchant_regex` | `CRITICAL` | Flags transactions at luxury, offshore crypto, or casino merchants | Regex pattern match |
+| `RULE_VELOCITY` | `velocity` | `HIGH` | Flags rapid bursts of transactions from a single user | > 5 txns within 10 seconds |
+| `RULE_LOCATION_JUMP` | `geo_jump` | `CRITICAL` | Flags impossible travel between distant locations/countries | > 900 km/h or cross-country < 300s |
 
 ---
 
@@ -123,6 +135,7 @@ npm run simulate -- [options]
 |---|---|---|
 | `-r, --rate <number>` | Target transactions per second (txns/sec) | `10` |
 | `-d, --duration <number>` | Simulation duration in seconds | `10` |
+| `--users <number>` | Size of simulated user pool (prevents normal velocity collisions) | `5000` |
 | `-s, --seed <string>` | Seed for reproducible random numbers & fraud patterns | *random* |
 | `-u, --url <string>` | Target Ingestion endpoint URL | `http://localhost:3001/transactions` |
 | `-b, --batch <number>` | Batch size for bulk ingestion | `1` (single POSTs) |
