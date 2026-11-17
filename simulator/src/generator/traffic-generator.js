@@ -31,12 +31,12 @@ class TrafficGenerator {
    * @param {object} [options]
    * @param {number|string} [options.seed]
    * @param {number} [options.fraudRatio=0.05]
-   * @param {number} [options.userPoolSize=200]
+   * @param {number} [options.userPoolSize=5000]
    */
   constructor(options = {}) {
     this.prng = new PRNG(options.seed);
     this.fraudRatio = options.fraudRatio !== undefined ? options.fraudRatio : 0.05;
-    this.userPoolSize = options.userPoolSize || 200;
+    this.userPoolSize = options.userPoolSize || 5000;
 
     // Pre-generate static user profiles for consistency
     this.users = [];

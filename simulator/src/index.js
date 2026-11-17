@@ -14,6 +14,7 @@ program
   .option('-u, --url <string>', 'Target Ingestion endpoint URL', 'http://localhost:3001/transactions')
   .option('-b, --batch <number>', 'Batch size for batch ingestion', (val) => parseInt(val, 10), 1)
   .option('--fraud-ratio <number>', 'Ratio of fraud-like transactions (0.0 - 1.0)', (val) => parseFloat(val), 0.05)
+  .option('--users <number>', 'Size of simulated user pool', (val) => parseInt(val, 10), 5000)
   .action(async (options) => {
     // If batch > 1 and user didn't change default URL, point to /batch
     let targetUrl = options.url;
@@ -28,6 +29,7 @@ program
       url: targetUrl,
       batchSize: options.batch,
       fraudRatio: options.fraudRatio,
+      users: options.users,
     });
 
     process.on('SIGINT', () => {

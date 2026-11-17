@@ -13,6 +13,7 @@ class SimulatorRunner {
    * @param {string} [options.url='http://localhost:3001/transactions'] - Ingestion URL
    * @param {number} [options.batchSize=1] - Batch size
    * @param {number} [options.fraudRatio=0.05]
+   * @param {number} [options.users=5000] - User pool size
    */
   constructor(options = {}) {
     this.targetRate = options.rate || 10;
@@ -21,10 +22,12 @@ class SimulatorRunner {
     this.url = options.url || 'http://localhost:3001/transactions';
     this.batchSize = options.batchSize || 1;
     this.fraudRatio = options.fraudRatio !== undefined ? options.fraudRatio : 0.05;
+    this.userPoolSize = options.users || 5000;
 
     this.generator = new TrafficGenerator({
       seed: this.seed,
       fraudRatio: this.fraudRatio,
+      userPoolSize: this.userPoolSize,
     });
 
     const parsedUrl = new URL(this.url);
@@ -118,6 +121,7 @@ class SimulatorRunner {
     console.log(`Target Rate:      ${this.targetRate} txns/sec`);
     console.log(`Duration:         ${this.durationSeconds} seconds (Target: ~${this.targetRate * this.durationSeconds} txns)`);
     console.log(`Target URL:       ${this.url}`);
+    console.log(`User Pool:        ${this.userPoolSize} users`);
     console.log(`Seed:             ${this.seed}`);
     console.log(`Batch Size:       ${this.batchSize}`);
     console.log(`Fraud Ratio:      ${(this.fraudRatio * 100).toFixed(1)}%`);
