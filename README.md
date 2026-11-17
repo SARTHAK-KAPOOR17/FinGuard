@@ -17,7 +17,7 @@ FinGuard is a high-volume financial transaction ingestion and real-time fraud de
 finguard/
   ├── services/
   │   ├── ingestion/       # HTTP Ingestion API (POST /transactions & /batch) -> Kafka
-  │   ├── rule-engine/     # Stateful fraud evaluation service (skeleton)
+  │   ├── rule-engine/     # Stateful fraud evaluation service & at-least-once Kafka processor
   │   ├── alert/           # Alert persistence and notifications (skeleton)
   │   ├── auth/            # Authentication & authorization service (skeleton)
   │   └── gateway/         # API Gateway & reverse proxy (skeleton)
@@ -52,6 +52,17 @@ finguard/
   - Configurable transaction simulator CLI with reproducible seedable fraud patterns
   - End-to-end load verification at 100 txns/sec for 30s (~3,000 transactions into Kafka)
 
+## Phase 2 Milestones
+
+- [x] **Day 4: Real-Time Rule Engine & At-Least-Once Processing**
+  - Kafka stream consumer subscribing to `transactions.raw` with configurable `fromBeginning=false`
+  - Resilient, poison-pill-proof message handling (malformed JSON and schema failures logged and skipped without blocking partition)
+  - At-least-once delivery: manual offset commit only after confirmed publication of flagged event to `transactions.flagged`
+  - Seed fraud rules matching traffic patterns:
+    - `RULE_LARGE_AMOUNT`: Amount > $10,000 USD (Severity: HIGH)
+    - `RULE_SUSPICIOUS_MERCHANT`: Regex matching luxury, offshore, and casino merchants (Severity: CRITICAL)
+  - Live end-to-end benchmark verification: consumed 2,999 raw transactions, flagged and published 66 fraud events with full rule metadata
+
 ---
 
 ## Transaction Ingestion API
@@ -61,24 +72,6 @@ The Ingestion Service exposes two endpoints on port `3001`:
 ### 1. Single Transaction Ingestion
 - **Endpoint**: `POST /transactions`
 - **Headers**: `Content-Type: application/json`
-- **Payload Schema**:
-  ```json
-  {
-    "txnId": "123e4567-e89b-12d3-a456-426614174000",
-    "userId": "usr_0042",
-    "amount": 149.99,
-    "currency": "USD",
-    "merchant": "Apple Store",
-    "location": {
-      "city": "New York",
-      "country": "USA",
-      "lat": 40.7128,
-      "lng": -74.0060
-    },
-    "deviceId": "dev_9876543210ab",
-    "timestamp": "2026-11-17T05:25:00.000Z"
-  }
-  ```
 - **Responses**:
   - `202 Accepted`: Payload validated and queued to Kafka topic `transactions.raw` partitioned by `userId`.
   - `400 Bad Request`: Validation failure with structured field errors.
@@ -86,7 +79,6 @@ The Ingestion Service exposes two endpoints on port `3001`:
 ### 2. Bulk Transaction Ingestion
 - **Endpoint**: `POST /transactions/batch`
 - **Batch Size Limit**: Max 500 transactions per batch.
-- **Payload**: Array of transaction objects or `{ "transactions": [...] }`.
 - **Responses**:
   - `202 Accepted`: All items valid and published in a single Kafka `sendBatch` call.
   - `202 Accepted` (`status: partially_accepted`): Valid items published via `sendBatch`, with per-item validation errors specifying each bad item's index.
@@ -94,16 +86,24 @@ The Ingestion Service exposes two endpoints on port `3001`:
 
 ---
 
+## Rule Engine Service
+
+The Rule Engine runs on port `3002` and consumes `transactions.raw` in real-time:
+
+### Endpoints
+- `GET /health`: Service health and live processor metrics (total consumed, flagged, clean, malformed).
+- `GET /rules`: List of active fraud rules and configurations.
+- `PATCH /rules/:id`: Enable or disable specific fraud rules dynamically.
+
+### Active Seed Rules
+| Rule ID | Type | Severity | Description |
+|---|---|---|---|
+| `RULE_LARGE_AMOUNT` | `THRESHOLD` | `HIGH` | Flags transactions with amount > $10,000 USD |
+| `RULE_SUSPICIOUS_MERCHANT` | `REGEX` | `CRITICAL` | Flags transactions at luxury, offshore crypto, or casino merchants |
+
+---
+
 ## Transaction Simulator CLI
-
-The simulator generates synthetic realistic transactions mixed with ~5% configurable fraud-like anomaly patterns.
-
-### Fraud Patterns Injected
-1. **Large Amount**: High-value transactions ($10,000 - $85,000+) at luxury merchants (Rolex Boutique, Private Jet Charter, Casino VIP).
-2. **Rapid Velocity**: High-frequency transaction bursts (5-7 transactions in < 1 second) from the same user and device.
-3. **Location Jump**: Impossible travel (e.g. New York followed by Tokyo within 1.5 seconds) for the same user.
-
-### CLI Usage & Options
 
 ```bash
 node simulator/src/index.js [options]
@@ -120,29 +120,12 @@ npm run simulate -- [options]
 | `-b, --batch <number>` | Batch size for bulk ingestion | `1` (single POSTs) |
 | `--fraud-ratio <number>` | Fraction of transactions exhibiting fraud patterns | `0.05` (5%) |
 
-### Examples
-
-**Standard run (10 txns/sec for 10 seconds):**
-```bash
-npm run simulate -- --rate 10 --duration 10
-```
-
-**Reproducible seeded run (100 txns/sec for 30 seconds):**
-```bash
-npm run simulate -- --rate 100 --duration 30 --seed finguard-benchmark-2026
-```
-
-**Batch mode (sending 20 transactions per request):**
-```bash
-npm run simulate -- --rate 100 --duration 10 --batch 20
-```
-
 ---
 
 ## Testing & Verification
 
 ```bash
-# Run unit & integration test suites across all workspaces
+# Run test suites across all workspaces
 npm test
 
 # Run Kafka end-to-end roundtrip test
