@@ -1,35 +1,186 @@
-const { SEED_RULES } = require('../rules/seed-rules');
+const { calculateHaversineDistanceKm } = require('../utils/geo');
 
 class RuleEvaluator {
   /**
-   * @param {Array} [initialRules]
+   * @param {Array<object>} rules - Array of Rule documents / objects from MongoDB
    */
-  constructor(initialRules = SEED_RULES) {
-    this.rules = [...initialRules];
+  constructor(rules = []) {
+    this.rules = rules.map((r) => ({
+      ruleId: r.ruleId,
+      name: r.name,
+      description: r.description,
+      type: r.type,
+      severity: r.severity,
+      enabled: r.enabled !== false,
+      config: r.config || {},
+    }));
   }
 
   /**
-   * Evaluates a transaction against all active rules.
+   * Evaluates a transaction against all enabled rules.
    *
    * @param {object} txn
-   * @returns {{ isFlagged: boolean, matchedRules: Array<object>, riskScore: number }}
+   * @param {object} [context]
+   * @param {object} [context.redis] - ioredis client for stateful sliding windows
+   * @returns {Promise<{ isFlagged: boolean, matchedRules: Array<object>, riskScore: number }>}
    */
-  evaluate(txn) {
+  async evaluate(txn, context = {}) {
     const matchedRules = [];
     let calculatedScore = 0;
+    const redis = context.redis;
 
     for (const rule of this.rules) {
       if (!rule.enabled) continue;
 
       try {
-        const result = rule.evaluate(txn);
-        if (result && result.matched) {
+        let matchResult = { matched: false };
+
+        switch (rule.type) {
+          case 'THRESHOLD': {
+            const threshold = rule.config.threshold || 10000;
+            const currency = rule.config.currency || 'USD';
+            if (txn.amount > threshold && (!currency || txn.currency === currency)) {
+              matchResult = {
+                matched: true,
+                reason: `Transaction amount of $${txn.amount.toFixed(2)} ${txn.currency} exceeds threshold of $${threshold.toLocaleString()} ${currency}`,
+                metadata: {
+                  amount: txn.amount,
+                  threshold,
+                  currency,
+                },
+              };
+            }
+            break;
+          }
+
+          case 'REGEX': {
+            const patternStr = rule.config.pattern;
+            if (patternStr) {
+              const regex = new RegExp(patternStr, 'i');
+              if (regex.test(txn.merchant)) {
+                matchResult = {
+                  matched: true,
+                  reason: `Merchant "${txn.merchant}" matches suspicious merchant pattern`,
+                  metadata: {
+                    merchant: txn.merchant,
+                    matchedPattern: patternStr,
+                  },
+                };
+              }
+            }
+            break;
+          }
+
+          case 'VELOCITY': {
+            if (redis) {
+              const windowSeconds = rule.config.windowSeconds || 10;
+              const maxAllowed = rule.config.maxAllowed || 5;
+              const key = `velocity:${txn.userId}`;
+              const nowMs = new Date(txn.timestamp).getTime() || Date.now();
+              const windowMs = windowSeconds * 1000;
+              const minScore = nowMs - windowMs;
+
+              // Atomic pipeline: purge old, add current, count in window, set expiration
+              const pipeline = redis.pipeline();
+              pipeline.zremrangebyscore(key, 0, minScore);
+              pipeline.zadd(key, nowMs, txn.txnId);
+              pipeline.zcard(key);
+              pipeline.expire(key, Math.max(60, windowSeconds * 4));
+
+              const results = await pipeline.exec();
+              // results[2] is zcard output: [null, count]
+              const currentCount = results && results[2] ? results[2][1] : 1;
+
+              if (currentCount > maxAllowed) {
+                matchResult = {
+                  matched: true,
+                  reason: `Velocity limit exceeded: ${currentCount} transactions within ${windowSeconds}s (max allowed: ${maxAllowed})`,
+                  metadata: {
+                    windowSeconds,
+                    maxAllowed,
+                    currentCount,
+                  },
+                };
+              }
+            }
+            break;
+          }
+
+          case 'GEO_DISTANCE': {
+            if (redis && txn.location && typeof txn.location.lat === 'number') {
+              const maxSpeedKmh = rule.config.maxSpeedKmh || 900;
+              const minDistanceKm = rule.config.minDistanceKm || 100;
+              const countryChangeMinSeconds = rule.config.countryChangeMinSeconds || 300;
+              const key = `location:${txn.userId}`;
+              const nowMs = new Date(txn.timestamp).getTime() || Date.now();
+
+              const prevLocationRaw = await redis.get(key);
+
+              // Update Redis to latest location immediately (TTL 24h)
+              const currentLocationData = JSON.stringify({
+                city: txn.location.city,
+                country: txn.location.country,
+                lat: txn.location.lat,
+                lng: txn.location.lng,
+                timestamp: txn.timestamp,
+                nowMs,
+              });
+              await redis.set(key, currentLocationData, 'EX', 86400);
+
+              if (prevLocationRaw) {
+                try {
+                  const prev = JSON.parse(prevLocationRaw);
+                  const distanceKm = calculateHaversineDistanceKm(
+                    prev.lat,
+                    prev.lng,
+                    txn.location.lat,
+                    txn.location.lng
+                  );
+
+                  const elapsedMs = Math.max(50, nowMs - (prev.nowMs || new Date(prev.timestamp).getTime()));
+                  const elapsedSeconds = elapsedMs / 1000;
+                  const elapsedHours = elapsedMs / 3600000;
+                  const impliedSpeedKmh = parseFloat((distanceKm / elapsedHours).toFixed(1));
+                  const countryChanged = prev.country !== txn.location.country;
+
+                  const isImpossibleSpeed = distanceKm >= minDistanceKm && impliedSpeedKmh > maxSpeedKmh;
+                  const isRapidCountryChange =
+                    countryChanged && distanceKm >= minDistanceKm && elapsedSeconds < countryChangeMinSeconds;
+
+                  if (isImpossibleSpeed || isRapidCountryChange) {
+                    matchResult = {
+                      matched: true,
+                      reason: `Impossible travel jump: ${distanceKm.toFixed(1)} km in ${elapsedSeconds.toFixed(1)}s (implied speed: ${impliedSpeedKmh.toFixed(0)} km/h, max: ${maxSpeedKmh} km/h)`,
+                      metadata: {
+                        distanceKm,
+                        elapsedSeconds,
+                        impliedSpeedKmh,
+                        maxSpeedKmh,
+                        from: { city: prev.city, country: prev.country },
+                        to: { city: txn.location.city, country: txn.location.country },
+                      },
+                    };
+                  }
+                } catch {
+                  // Fallback if previous location record was malformed
+                }
+              }
+              // If no previous location, this is first transaction of user -> do not flag
+            }
+            break;
+          }
+
+          default:
+            break;
+        }
+
+        if (matchResult && matchResult.matched) {
           matchedRules.push({
-            ruleId: rule.id,
+            ruleId: rule.ruleId,
             ruleName: rule.name,
             severity: rule.severity,
-            reason: result.reason || `${rule.name} matched`,
-            metadata: result.metadata || {},
+            reason: matchResult.reason || `${rule.name} triggered`,
+            metadata: matchResult.metadata || {},
           });
 
           switch (rule.severity) {
@@ -49,7 +200,7 @@ class RuleEvaluator {
           }
         }
       } catch (err) {
-        // Individual rule failure should not crash the entire evaluation
+        // Individual rule execution failure does not block evaluation of remaining rules
         continue;
       }
     }
@@ -66,17 +217,18 @@ class RuleEvaluator {
 
   getRules() {
     return this.rules.map((r) => ({
-      id: r.id,
+      ruleId: r.ruleId,
       name: r.name,
       description: r.description,
       type: r.type,
       severity: r.severity,
       enabled: r.enabled,
+      config: r.config,
     }));
   }
 
   setRuleEnabled(ruleId, enabled) {
-    const rule = this.rules.find((r) => r.id === ruleId);
+    const rule = this.rules.find((r) => r.ruleId === ruleId);
     if (rule) {
       rule.enabled = Boolean(enabled);
       return true;

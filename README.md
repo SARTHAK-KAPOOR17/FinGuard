@@ -62,6 +62,12 @@ finguard/
     - `RULE_LARGE_AMOUNT`: Amount > $10,000 USD (Severity: HIGH)
     - `RULE_SUSPICIOUS_MERCHANT`: Regex matching luxury, offshore, and casino merchants (Severity: CRITICAL)
   - Live end-to-end benchmark verification: consumed 2,999 raw transactions, flagged and published 66 fraud events with full rule metadata
+- [x] **Day 5: Stateful Velocity & Geo-Distance Rules + Atomic Runtime Reload**
+  - **MongoDB Rule Persistence**: Fraud rules stored in MongoDB collection `rules` with automatic fallback seeding if collection is empty.
+  - **Standardized Severity**: Standardized across schema, model, evaluator, and alerts as `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`.
+  - **Redis Sliding-Window Velocity (`RULE_VELOCITY`)**: Tracks per-user frequency using Redis Sorted Sets (`ZADD`, `ZREMRANGEBYSCORE`, `ZCARD`) within a sliding window (default: > 5 txns in 10s) with TTL auto-expiration.
+  - **Geo-Distance & Impossible Travel (`RULE_LOCATION_JUMP`)**: Haversine distance and implied speed calculation (> 900 km/h) with rapid country change detection. Gracefully handles user's first transaction without false positives.
+  - **Atomic Runtime Reload**: Rebuilds `RuleEvaluator` instance atomically so no transaction evaluates against partial state. Triggers immediately via Redis Pub/Sub channel `rules:updated` or HTTP `PATCH /rules/:id`, plus a 60-second fallback poll.
 
 ---
 
@@ -96,10 +102,12 @@ The Rule Engine runs on port `3002` and consumes `transactions.raw` in real-time
 - `PATCH /rules/:id`: Enable or disable specific fraud rules dynamically.
 
 ### Active Seed Rules
-| Rule ID | Type | Severity | Description |
-|---|---|---|---|
-| `RULE_LARGE_AMOUNT` | `THRESHOLD` | `HIGH` | Flags transactions with amount > $10,000 USD |
-| `RULE_SUSPICIOUS_MERCHANT` | `REGEX` | `CRITICAL` | Flags transactions at luxury, offshore crypto, or casino merchants |
+| Rule ID | Type | Severity | Description | Default Threshold / Window |
+|---|---|---|---|---|
+| `RULE_LARGE_AMOUNT` | `THRESHOLD` | `HIGH` | Flags transactions with amount > threshold in USD | Amount > $10,000 USD |
+| `RULE_SUSPICIOUS_MERCHANT` | `REGEX` | `CRITICAL` | Flags transactions at luxury, offshore crypto, or casino merchants | Regex pattern match |
+| `RULE_VELOCITY` | `VELOCITY` | `HIGH` | Flags rapid bursts of transactions from a single user | > 5 txns within 10 seconds |
+| `RULE_LOCATION_JUMP` | `GEO_DISTANCE` | `CRITICAL` | Flags impossible travel between distant locations/countries | > 900 km/h or cross-country < 300s |
 
 ---
 
@@ -118,7 +126,10 @@ npm run simulate -- [options]
 | `-s, --seed <string>` | Seed for reproducible random numbers & fraud patterns | *random* |
 | `-u, --url <string>` | Target Ingestion endpoint URL | `http://localhost:3001/transactions` |
 | `-b, --batch <number>` | Batch size for bulk ingestion | `1` (single POSTs) |
-| `--fraud-ratio <number>` | Fraction of transactions exhibiting fraud patterns | `0.05` (5%) |
+| `--fraud-ratio <number>` | Trigger probability per generator step | `0.05` (5%) |
+
+> **Note on Fraud Ratio vs. Effective Share:**
+> The `--fraud-ratio` parameter (default `0.05` or 5%) configures the *trigger probability per generation step*. However, when a `rapid_velocity` anomaly triggers, it generates a multi-transaction burst of 5 to 7 transactions for that user, and a `location_jump` anomaly emits 2 sequential geographically distant transactions. As a result, the **effective fraud-like transaction share** across all generated transactions is approximately **12% to 14%** (around ~13% on average).
 
 ---
 
