@@ -6,6 +6,11 @@ const {
   validateTransaction,
   validateBatchTransactions,
 } = require('./schemas/transaction.schema');
+const {
+  createKafkaClient,
+  createProducer,
+  createConsumer,
+} = require('./kafka');
 
 module.exports = {
   ...constants,
@@ -14,4 +19,7 @@ module.exports = {
   batchTransactionSchema,
   validateTransaction,
   validateBatchTransactions,
+  createKafkaClient,
+  createProducer,
+  createConsumer,
 };
