@@ -14,6 +14,7 @@
     "infra:logs": "docker-compose -f infra/docker-compose.yml logs -f",
     "infra:status": "docker-compose -f infra/docker-compose.yml ps",
     "test:kafka": "node scripts/test-kafka-roundtrip.js",
+    "simulate": "node simulator/src/index.js",
     "test": "npm run test --workspaces --if-present"
   },
   "keywords": [
