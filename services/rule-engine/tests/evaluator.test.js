@@ -186,4 +186,90 @@ describe('RuleEvaluator & Stateful Rules', () => {
       );
     });
   });
+
+  describe('RiskScore Scaling by Severity', () => {
+    it('should assign riskScore=25 for LOW severity', async () => {
+      const lowEvaluator = new RuleEvaluator([
+        {
+          ruleId: 'RULE_LOW_TEST',
+          name: 'Low Rule',
+          type: 'THRESHOLD',
+          severity: 'LOW',
+          enabled: true,
+          config: { threshold: 100 },
+        },
+      ]);
+      const res = await lowEvaluator.evaluate({ ...baseTxn, amount: 200 });
+      expect(res.riskScore).toBe(25);
+    });
+
+    it('should assign riskScore=50 for MEDIUM severity', async () => {
+      const medEvaluator = new RuleEvaluator([
+        {
+          ruleId: 'RULE_MED_TEST',
+          name: 'Medium Rule',
+          type: 'THRESHOLD',
+          severity: 'MEDIUM',
+          enabled: true,
+          config: { threshold: 100 },
+        },
+      ]);
+      const res = await medEvaluator.evaluate({ ...baseTxn, amount: 200 });
+      expect(res.riskScore).toBe(50);
+    });
+
+    it('should assign riskScore=75 for HIGH severity', async () => {
+      const highEvaluator = new RuleEvaluator([
+        {
+          ruleId: 'RULE_HIGH_TEST',
+          name: 'High Rule',
+          type: 'THRESHOLD',
+          severity: 'HIGH',
+          enabled: true,
+          config: { threshold: 100 },
+        },
+      ]);
+      const res = await highEvaluator.evaluate({ ...baseTxn, amount: 200 });
+      expect(res.riskScore).toBe(75);
+    });
+
+    it('should assign riskScore=90 for CRITICAL severity', async () => {
+      const critEvaluator = new RuleEvaluator([
+        {
+          ruleId: 'RULE_CRIT_TEST',
+          name: 'Critical Rule',
+          type: 'THRESHOLD',
+          severity: 'CRITICAL',
+          enabled: true,
+          config: { threshold: 100 },
+        },
+      ]);
+      const res = await critEvaluator.evaluate({ ...baseTxn, amount: 200 });
+      expect(res.riskScore).toBe(90);
+    });
+
+    it('should add bonus for multiple matched rules, capped at 100', async () => {
+      const multiEvaluator = new RuleEvaluator([
+        {
+          ruleId: 'RULE_CRIT_TEST',
+          name: 'Critical Rule',
+          type: 'THRESHOLD',
+          severity: 'CRITICAL',
+          enabled: true,
+          config: { threshold: 100 },
+        },
+        {
+          ruleId: 'RULE_HIGH_TEST',
+          name: 'High Rule',
+          type: 'REGEX',
+          severity: 'HIGH',
+          enabled: true,
+          config: { pattern: 'Starbucks' },
+        },
+      ]);
+      const res = await multiEvaluator.evaluate({ ...baseTxn, amount: 200, merchant: 'Starbucks Coffee' });
+      // CRITICAL (90) + 1 extra rule (5) = 95
+      expect(res.riskScore).toBe(95);
+    });
+  });
 });

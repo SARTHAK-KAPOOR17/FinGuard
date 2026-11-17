@@ -1,5 +1,14 @@
 const { calculateHaversineDistanceKm } = require('../utils/geo');
 
+const SEVERITY_BASE_SCORES = {
+  LOW: 25,
+  MEDIUM: 50,
+  HIGH: 75,
+  CRITICAL: 90,
+};
+
+const EXTRA_RULE_BONUS = 5;
+
 class RuleEvaluator {
   /**
    * @param {Array<object>} rules - Array of Rule documents / objects from MongoDB
@@ -182,22 +191,6 @@ class RuleEvaluator {
             reason: matchResult.reason || `${rule.name} triggered`,
             metadata: matchResult.metadata || {},
           });
-
-          switch (rule.severity) {
-            case 'CRITICAL':
-              calculatedScore += 50;
-              break;
-            case 'HIGH':
-              calculatedScore += 35;
-              break;
-            case 'MEDIUM':
-              calculatedScore += 20;
-              break;
-            case 'LOW':
-            default:
-              calculatedScore += 10;
-              break;
-          }
         }
       } catch (err) {
         // Individual rule execution failure does not block evaluation of remaining rules
@@ -206,7 +199,14 @@ class RuleEvaluator {
     }
 
     const isFlagged = matchedRules.length > 0;
-    const riskScore = isFlagged ? Math.min(100, Math.max(50, calculatedScore)) : 0;
+    let riskScore = 0;
+    if (isFlagged) {
+      const maxBaseScore = Math.max(
+        ...matchedRules.map((r) => SEVERITY_BASE_SCORES[r.severity] || 25)
+      );
+      const extraBonus = (matchedRules.length - 1) * EXTRA_RULE_BONUS;
+      riskScore = Math.min(100, maxBaseScore + extraBonus);
+    }
 
     return {
       isFlagged,
