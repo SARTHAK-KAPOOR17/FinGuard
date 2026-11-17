@@ -1,0 +1,31 @@
+{
+  "name": "finguard-monorepo",
+  "version": "1.0.0",
+  "description": "FinGuard - Real-time financial fraud detection platform",
+  "private": true,
+  "workspaces": [
+    "services/*",
+    "simulator",
+    "shared"
+  ],
+  "scripts": {
+    "infra:up": "docker-compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker-compose -f infra/docker-compose.yml down",
+    "infra:logs": "docker-compose -f infra/docker-compose.yml logs -f",
+    "infra:status": "docker-compose -f infra/docker-compose.yml ps",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "keywords": [
+    "fraud-detection",
+    "kafka",
+    "microservices",
+    "realtime",
+    "nodejs",
+    "express"
+  ],
+  "author": "FinGuard Team",
+  "license": "ISC",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

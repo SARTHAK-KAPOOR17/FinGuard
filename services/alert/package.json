@@ -1,0 +1,29 @@
+{
+  "name": "@finguard/alert-service",
+  "version": "1.0.0",
+  "description": "FinGuard Alert and Notification Service (Skeleton)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "jest --runInBand"
+  },
+  "dependencies": {
+    "@finguard/shared": "*",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "kafkajs": "^2.2.4",
+    "mongoose": "^8.9.5",
+    "pino": "^9.5.0",
+    "pino-http": "^10.4.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.9",
+    "pino-pretty": "^13.0.0",
+    "supertest": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

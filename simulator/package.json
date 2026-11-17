@@ -1,0 +1,27 @@
+{
+  "name": "@finguard/simulator",
+  "version": "1.0.0",
+  "description": "FinGuard Transaction Simulator CLI",
+  "main": "src/index.js",
+  "bin": {
+    "finguard-simulator": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "simulate": "node src/index.js"
+  },
+  "dependencies": {
+    "@finguard/shared": "*",
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.7",
+    "pino": "^9.5.0",
+    "pino-pretty": "^13.0.0",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
