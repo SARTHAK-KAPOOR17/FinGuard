@@ -1,5 +1,3 @@
-
-# FinGuard
 # FinGuard - Real-Time Financial Fraud Detection Platform
 
 FinGuard is a high-volume financial transaction ingestion and real-time fraud detection engine built with an event-driven microservices architecture on the MERN stack.
@@ -7,8 +5,8 @@ FinGuard is a high-volume financial transaction ingestion and real-time fraud de
 ## Architecture & Tech Stack
 
 - **Runtime & Framework**: Node.js (v20+), Express (CommonJS)
-- **Streaming & Messaging**: Apache Kafka in KRaft mode (KRaft, no ZooKeeper) via `kafkajs`
-- **Databases & Caching**: MongoDB (Mongoose) for persistence, Redis (`ioredis`) for sliding-window velocity and state checks
+- **Streaming & Messaging**: Apache Kafka in KRaft mode (no ZooKeeper) via `kafkajs`
+- **Databases & Caching**: MongoDB 7.0 (Mongoose) for persistence, Redis 7 (`ioredis`) for sliding-window velocity checks
 - **Validation & Logging**: Joi for schema validation, `pino` for structured JSON logging
 - **Infrastructure**: Docker & Docker Compose with healthchecks and named volumes
 - **Testing**: Jest & Supertest
@@ -27,6 +25,7 @@ finguard/
   ├── shared/              # Reusable logger, Kafka wrappers, schemas, constants
   ├── infra/               # Docker Compose & infrastructure configurations
   ├── docs/                # Architectural diagrams & design specifications
+  ├── scripts/             # End-to-end verification scripts (e.g., Kafka roundtrip)
   ├── .gitignore
   ├── .env.example
   └── README.md
@@ -40,43 +39,40 @@ finguard/
   - Kafka topics auto-creation (`transactions.raw`, `transactions.flagged`)
   - Canonical transaction schema definition in `shared/`
   - Structured Pino logger and environment templates
-- [ ] **Day 2: Service Skeletons & Kafka Wrapper**
-  - Express service skeletons with `GET /health` and graceful shutdowns
-  - Reusable resilient Kafka wrapper (`createProducer`, `createConsumer`)
-  - End-to-end Kafka roundtrip test
+- [x] **Day 2: Service Skeletons & Kafka Wrapper**
+  - Express service skeletons with `GET /health`, env config, and graceful shutdown
+  - Clear `src/` layout (routes, controllers, services, config) across all 5 microservices
+  - Reusable resilient Kafka wrapper (`createProducer`, `createConsumer`) with retry & backoff
+  - Live Kafka roundtrip verification against Docker Compose cluster
+  - Automated Jest & Supertest health check test suite
 - [ ] **Day 3: Ingestion Service & Transaction Simulator**
   - `POST /transactions` and `POST /transactions/batch` with Joi validation
   - Simulator CLI with configurable rate, duration, and anomaly patterns
   - Jest & Supertest validation test suite
 
-## Quick Start (Infrastructure)
+## Quick Start (Infrastructure & Services)
 
-### Prerequisites
+### 1. Prerequisites
 - Node.js >= 20.0.0
-- Docker and Docker Compose
+- Docker & Docker Compose
 
-### 1. Start Infrastructure
+### 2. Start Infrastructure
 ```bash
-# Start Kafka, MongoDB, and Redis
+# Start KRaft Kafka, MongoDB, and Redis
 npm run infra:up
 
 # Check container health status
 npm run infra:status
-
-# Stream logs
-npm run infra:logs
-
-# Tear down infrastructure
-npm run infra:down
 ```
 
-### 2. Verify Kafka Topics
-Kafka automatically provisions the following topics:
-- `transactions.raw` (3 partitions, replication factor 1)
-- `transactions.flagged` (3 partitions, replication factor 1)
-
-### 3. Environment Setup
-Copy the example environment files for local execution:
+### 3. Run Live Kafka Roundtrip Test
+Tests end-to-end event streaming from producer through live Kafka broker to consumer:
 ```bash
-cp .env.example .env
+npm run test:kafka
+```
+
+### 4. Run Service Health Test Suite
+Executes Jest & Supertest across all service skeletons:
+```bash
+npm test
 ```
