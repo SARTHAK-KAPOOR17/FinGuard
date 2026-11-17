@@ -272,4 +272,115 @@ describe('RuleEvaluator & Stateful Rules', () => {
       expect(res.riskScore).toBe(95);
     });
   });
+
+  describe('Rule Type Aliases & Evaluation (amount_threshold, merchant_regex, velocity, geo_jump)', () => {
+    it('amount_threshold: match (> threshold) and no-match (<= threshold)', async () => {
+      const ev = new RuleEvaluator([
+        {
+          ruleId: 'AMT_ALIAS',
+          name: 'Amount Threshold Alias',
+          type: 'amount_threshold',
+          severity: 'HIGH',
+          enabled: true,
+          config: { threshold: 500, currency: 'USD' },
+        },
+      ]);
+
+      const noMatch = await ev.evaluate({ ...baseTxn, amount: 499.99 });
+      expect(noMatch.isFlagged).toBe(false);
+
+      const match = await ev.evaluate({ ...baseTxn, amount: 500.01 });
+      expect(match.isFlagged).toBe(true);
+      expect(match.matchedRules[0].ruleId).toBe('AMT_ALIAS');
+    });
+
+    it('merchant_regex: match and no-match', async () => {
+      const ev = new RuleEvaluator([
+        {
+          ruleId: 'MERCHANT_ALIAS',
+          name: 'Merchant Regex Alias',
+          type: 'merchant_regex',
+          severity: 'CRITICAL',
+          enabled: true,
+          config: { pattern: '(Crypto|Offshore)' },
+        },
+      ]);
+
+      const noMatch = await ev.evaluate({ ...baseTxn, merchant: 'Apple Store' });
+      expect(noMatch.isFlagged).toBe(false);
+
+      const match = await ev.evaluate({ ...baseTxn, merchant: 'Offshore Exchange' });
+      expect(match.isFlagged).toBe(true);
+      expect(match.matchedRules[0].ruleId).toBe('MERCHANT_ALIAS');
+    });
+
+    it('velocity: match and no-match', async () => {
+      const ev = new RuleEvaluator([
+        {
+          ruleId: 'VEL_ALIAS',
+          name: 'Velocity Alias',
+          type: 'velocity',
+          severity: 'HIGH',
+          enabled: true,
+          config: { windowSeconds: 10, maxAllowed: 3 },
+        },
+      ]);
+
+      // Mock count = 2 (no-match)
+      mockRedis.pipeline.mockReturnValue({
+        zremrangebyscore: jest.fn().mockReturnThis(),
+        zadd: jest.fn().mockReturnThis(),
+        zcard: jest.fn().mockReturnThis(),
+        expire: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue([[null, 0], [null, 1], [null, 2], [null, 1]]),
+      });
+      const noMatch = await ev.evaluate(baseTxn, { redis: mockRedis });
+      expect(noMatch.isFlagged).toBe(false);
+
+      // Mock count = 4 (match)
+      mockRedis.pipeline.mockReturnValue({
+        zremrangebyscore: jest.fn().mockReturnThis(),
+        zadd: jest.fn().mockReturnThis(),
+        zcard: jest.fn().mockReturnThis(),
+        expire: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue([[null, 0], [null, 1], [null, 4], [null, 1]]),
+      });
+      const match = await ev.evaluate(baseTxn, { redis: mockRedis });
+      expect(match.isFlagged).toBe(true);
+      expect(match.matchedRules[0].ruleId).toBe('VEL_ALIAS');
+    });
+
+    it('geo_jump: match and no-match', async () => {
+      const ev = new RuleEvaluator([
+        {
+          ruleId: 'GEO_ALIAS',
+          name: 'Geo Jump Alias',
+          type: 'geo_jump',
+          severity: 'CRITICAL',
+          enabled: true,
+          config: { maxSpeedKmh: 900, minDistanceKm: 100 },
+        },
+      ]);
+
+      // No prior location -> no-match
+      mockRedis.get.mockResolvedValue(null);
+      const noMatch = await ev.evaluate(baseTxn, { redis: mockRedis });
+      expect(noMatch.isFlagged).toBe(false);
+
+      // Distant jump 1 second ago -> match
+      mockRedis.get.mockResolvedValue(
+        JSON.stringify({
+          city: 'London',
+          country: 'UK',
+          lat: 51.5074,
+          lng: -0.1278,
+          timestamp: new Date(Date.now() - 1000).toISOString(),
+          nowMs: Date.now() - 1000,
+        })
+      );
+      const match = await ev.evaluate(baseTxn, { redis: mockRedis });
+      expect(match.isFlagged).toBe(true);
+      expect(match.matchedRules[0].ruleId).toBe('GEO_ALIAS');
+    });
+  });
 });

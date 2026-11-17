@@ -14,15 +14,23 @@ class RuleEvaluator {
    * @param {Array<object>} rules - Array of Rule documents / objects from MongoDB
    */
   constructor(rules = []) {
-    this.rules = rules.map((r) => ({
-      ruleId: r.ruleId,
-      name: r.name,
-      description: r.description,
-      type: r.type,
-      severity: r.severity,
-      enabled: r.enabled !== false,
-      config: r.config || {},
-    }));
+    this.rules = rules.map((r) => {
+      let normType = (r.type || '').toUpperCase();
+      if (normType === 'AMOUNT_THRESHOLD') normType = 'THRESHOLD';
+      if (normType === 'MERCHANT_REGEX') normType = 'REGEX';
+      if (normType === 'GEO_JUMP') normType = 'GEO_DISTANCE';
+
+      return {
+        ruleId: r.ruleId,
+        name: r.name,
+        description: r.description,
+        type: normType,
+        originalType: r.type,
+        severity: r.severity,
+        enabled: r.enabled !== false,
+        config: r.config || {},
+      };
+    });
   }
 
   /**
@@ -48,7 +56,10 @@ class RuleEvaluator {
           case 'THRESHOLD': {
             const threshold = rule.config.threshold || 10000;
             const currency = rule.config.currency || 'USD';
-            if (txn.amount > threshold && (!currency || txn.currency === currency)) {
+            const operator = rule.config.operator || '>';
+            const isAmountMatch = operator === '>=' ? txn.amount >= threshold : txn.amount > threshold;
+
+            if (isAmountMatch && (!currency || txn.currency === currency)) {
               matchResult = {
                 matched: true,
                 reason: `Transaction amount of $${txn.amount.toFixed(2)} ${txn.currency} exceeds threshold of $${threshold.toLocaleString()} ${currency}`,
@@ -56,6 +67,7 @@ class RuleEvaluator {
                   amount: txn.amount,
                   threshold,
                   currency,
+                  operator,
                 },
               };
             }

@@ -21,7 +21,16 @@ const ruleSchema = new mongoose.Schema(
     type: {
       type: String,
       required: true,
-      enum: ['THRESHOLD', 'REGEX', 'VELOCITY', 'GEO_DISTANCE'],
+      enum: [
+        'THRESHOLD',
+        'REGEX',
+        'VELOCITY',
+        'GEO_DISTANCE',
+        'amount_threshold',
+        'merchant_regex',
+        'velocity',
+        'geo_jump',
+      ],
     },
     severity: {
       type: String,
