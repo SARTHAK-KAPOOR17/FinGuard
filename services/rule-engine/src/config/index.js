@@ -15,6 +15,8 @@ const config = Object.freeze({
     consumerGroupId: process.env.KAFKA_CONSUMER_GROUP_ID || 'rule-engine-group',
     rawTopic: process.env.KAFKA_RAW_TOPIC || TOPICS.TRANSACTIONS_RAW,
     flaggedTopic: process.env.KAFKA_FLAGGED_TOPIC || TOPICS.TRANSACTIONS_FLAGGED,
+    // Defaults to false to prevent reprocessing historical benchmark transactions
+    fromBeginning: process.env.KAFKA_FROM_BEGINNING === 'true',
   },
   redis: {
     host: process.env.REDIS_HOST || 'localhost',

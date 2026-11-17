@@ -1,4 +1,5 @@
 const config = require('../config');
+const ruleProcessorService = require('./rule-processor.service');
 
 class HealthService {
   getHealthStatus() {
@@ -8,6 +9,7 @@ class HealthService {
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
       environment: config.env,
+      processor: ruleProcessorService.getMetrics(),
     };
   }
 }

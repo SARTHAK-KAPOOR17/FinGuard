@@ -8,6 +8,11 @@ const {
   validateBatchItems,
 } = require('./schemas/transaction.schema');
 const {
+  matchedRuleSchema,
+  flaggedEventSchema,
+  validateFlaggedEvent,
+} = require('./schemas/flagged.schema');
+const {
   createKafkaClient,
   createProducer,
   createConsumer,
@@ -21,6 +26,9 @@ module.exports = {
   transactionSchema,
   validateTransaction,
   validateBatchItems,
+  matchedRuleSchema,
+  flaggedEventSchema,
+  validateFlaggedEvent,
   createKafkaClient,
   createProducer,
   createConsumer,

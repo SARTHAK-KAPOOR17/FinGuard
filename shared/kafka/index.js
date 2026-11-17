@@ -350,6 +350,11 @@ function createConsumer(kafkaClient, options = {}) {
               value: parsedValue,
               offset: message.offset,
               timestamp: message.timestamp,
+              commitOffset: async () => {
+                await consumer.commitOffsets([
+                  { topic, partition, offset: (BigInt(message.offset) + 1n).toString() },
+                ]);
+              },
             });
           } catch (handlerErr) {
             logger.error(
@@ -376,12 +381,20 @@ function createConsumer(kafkaClient, options = {}) {
     }
   }
 
+  async function commitOffsets(offsets) {
+    if (!connected) {
+      await connect();
+    }
+    return await consumer.commitOffsets(offsets);
+  }
+
   return {
     raw: consumer,
     connect,
     disconnect,
     subscribe,
     run,
+    commitOffsets,
     isConnected: () => connected,
   };
 }
