@@ -246,12 +246,19 @@ npm run simulate -- --rate 100 --duration 30 --users 5000
 #### 3. Alert Inspection Drawer & Status Lifecycle Mutation
 ![Alert Inspection Drawer](docs/screenshots/drawer-investigating.png)
 
-#### 4. Privileged RBAC Authorization & 401 Error Handling
+#### 4. API-Key Protected Status Updates & 401 Error Handling
 ![401 Unauthorized Error Handling](docs/screenshots/error-401.png)
 
 > [!WARNING]
 > **Security Notice regarding `VITE_ADMIN_API_KEY`:**
 > Any environment variable prefixed with `VITE_` is baked directly into the client-side JavaScript bundle and is visible to any browser visitor. In this development setup, `VITE_ADMIN_API_KEY` is provided in `.env` for local testing only. In production environments, never expose admin keys in the browser bundle; all privileged status modifications must be routed through an authenticated backend-for-frontend (BFF) session or reverse proxy with user-level RBAC.
+
+### Known Limitations
+
+1. **Client-Side Admin API Key (`VITE_ADMIN_API_KEY`)**: In development, privileged alert status updates use a static API key bundled in the Vite environment. In production, this must be replaced by a secure Backend-For-Frontend (BFF) session or reverse-proxy with user-level JWT authentication and role-based access control (RBAC).
+2. **Hardcoded Analyst Identity**: The analyst identifier (`analyst_lead_sarah`) is currently hardcoded in `AlertDetailDrawer.jsx` as a placeholder pending user authentication (Auth Service) integration in subsequent milestones.
+3. **In-Memory Feed Cap (200 Records)**: To prevent browser DOM bloat and high memory usage, the live feed retains a maximum of 200 alerts in client-side memory. Historical records are preserved in MongoDB and accessible via paginated API queries.
+4. **Single-Node Infrastructure**: Apache Kafka, MongoDB, and Redis run in single-node containers in Docker Compose for development efficiency rather than distributed multi-broker clusters.
 
 ---
 

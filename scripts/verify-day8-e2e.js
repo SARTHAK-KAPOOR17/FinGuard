@@ -192,9 +192,31 @@ async function runE2E() {
     const rowCount = await page.locator('tbody tr').count();
     console.log(`      - Live feed displayed row count: ${rowCount}`);
 
-    // Verify stats cards have counts
+    // Verify stats cards have counts and accurate Avg Risk
     const totalStatsText = await page.locator('div:has-text("TOTAL") + div').first().innerText();
     console.log(`      - Total stat card value: ${totalStatsText.trim()}`);
+
+    // Helper functions for stats verification
+    async function getUiAvgRiskScore() {
+      const text = await page.locator('div:has-text("AVG RISK") + div > div').first().innerText();
+      return parseFloat(text.trim());
+    }
+
+    async function getBackendStats() {
+      const res = await fetch(`http://localhost:${ALERT_PORT}/alerts/stats`);
+      return await res.json();
+    }
+
+    const uiAvgRisk = await getUiAvgRiskScore();
+    const backendStats = await getBackendStats();
+    console.log(`      - Avg Risk (UI): ${uiAvgRisk}, (Backend /alerts/stats): ${backendStats.avgRiskScore}`);
+    if (uiAvgRisk <= 0) {
+      throw new Error(`Avg Risk in UI is 0.0 or negative despite ${backendStats.total} detected alerts!`);
+    }
+    if (Math.abs(uiAvgRisk - backendStats.avgRiskScore) > 2.0) {
+      throw new Error(`Avg Risk mismatch: UI has ${uiAvgRisk}, backend has ${backendStats.avgRiskScore}`);
+    }
+    console.log('      >>> [PASSED] all-alerts view: Avg Risk correctly matches backend /alerts/stats!\n');
 
     // Screenshot 1: Live Feed
     const liveFeedScreenshot = path.join(SCREENSHOT_DIR, 'live-feed.png');
@@ -218,14 +240,33 @@ async function runE2E() {
       throw new Error('Non-critical rows displayed while filtered by CRITICAL!');
     }
 
+    // Verify Avg Risk matches backend after room switch
+    const criticalStats = await getBackendStats();
+    const criticalUiAvg = await getUiAvgRiskScore();
+    console.log(`      - CRITICAL Room Avg Risk: UI=${criticalUiAvg}, Backend=${criticalStats.avgRiskScore}`);
+    if (Math.abs(criticalUiAvg - criticalStats.avgRiskScore) > 0.5) {
+      throw new Error(`CRITICAL room Avg Risk mismatch: UI has ${criticalUiAvg}, backend has ${criticalStats.avgRiskScore}`);
+    }
+    console.log('      >>> [PASSED] CRITICAL room: Avg Risk correctly matches backend /alerts/stats!\n');
+
     // Screenshot 2: Filtered Critical
     const filteredScreenshot = path.join(SCREENSHOT_DIR, 'filtered-critical.png');
     await page.screenshot({ path: filteredScreenshot, fullPage: false });
     console.log(`      >>> [SCREENSHOT] Saved: ${filteredScreenshot}\n`);
 
     // Reset filter to ALL
+    console.log('      Switching back to ALL alerts room...');
     await page.locator('button:has-text("ALL")').first().click();
     await sleep(1500);
+
+    // Verify Avg Risk matches backend after returning to ALL room
+    const allStats = await getBackendStats();
+    const allUiAvg = await getUiAvgRiskScore();
+    console.log(`      - Returned to ALL Room Avg Risk: UI=${allUiAvg}, Backend=${allStats.avgRiskScore}`);
+    if (Math.abs(allUiAvg - allStats.avgRiskScore) > 0.5) {
+      throw new Error(`Returned ALL room Avg Risk mismatch: UI has ${allUiAvg}, backend has ${allStats.avgRiskScore}`);
+    }
+    console.log('      >>> [PASSED] Returned to ALL room: Avg Risk correctly matches backend /alerts/stats!\n');
 
     // 6. Pagination Test (Page 2 Historical Mode)
     console.log('[6/7] Testing Pagination & Historical Mode...');
@@ -255,8 +296,9 @@ async function runE2E() {
     console.log('      - Alert Detail Drawer opened successfully');
 
     // Fill analyst note
+    const NOTE_TEXT = 'E2E Analyst Review - suspicious travel velocity detected';
     const noteInput = page.locator('input[placeholder*="investigation"]');
-    await noteInput.fill('E2E Analyst Review - suspicious travel velocity detected');
+    await noteInput.fill(NOTE_TEXT);
 
     // Click "Mark Investigating"
     const investigateBtn = page.locator('button:has-text("Mark Investigating")');
@@ -266,9 +308,17 @@ async function runE2E() {
       console.log('      - Status successfully transitioned to INVESTIGATING');
 
       // Verify Note in timeline
-      await page.waitForSelector('text=E2E Analyst Review - suspicious travel velocity detected', { timeout: 6000 });
-      console.log('      - Analyst note displayed in timeline');
+      await page.waitForSelector(`text=${NOTE_TEXT}`, { timeout: 6000 });
+      console.log(`      - Analyst note "${NOTE_TEXT}" displayed in timeline`);
+
+      // Verify Audit entry in timeline
+      await page.waitForSelector('text=Status changed from OPEN to INVESTIGATING', { timeout: 6000 });
+      console.log('      - Automated audit entry "Status changed from OPEN to INVESTIGATING" displayed in timeline');
     }
+
+    // Scroll drawer so Notes Timeline is prominently visible
+    await page.locator('#notes-timeline').scrollIntoViewIfNeeded();
+    await sleep(500);
 
     // Screenshot 3: Drawer Investigating
     const drawerScreenshot = path.join(SCREENSHOT_DIR, 'drawer-investigating.png');
@@ -292,13 +342,14 @@ async function runE2E() {
     const resolveBtn = page.locator('button:has-text("Resolve Threat")');
     if (await resolveBtn.isVisible()) {
       await resolveBtn.click();
-      await page.waitForSelector('text=401 Unauthorized', { timeout: 6000 });
-      console.log('      >>> [PASSED] UI correctly displays 401 Unauthorized badge on authorization failure!');
+      await page.waitForSelector('text=401 Unauthorized: Invalid or missing API key', { timeout: 6000 });
+      console.log('      >>> [PASSED] UI correctly displays generic 401 Unauthorized badge (no env var exposed)!');
     }
 
     // Screenshot 4: 401 Error Badge
     const errorScreenshot = path.join(SCREENSHOT_DIR, 'error-401.png');
     await page.screenshot({ path: errorScreenshot, fullPage: false });
+    console.log(`      >>> [SCREENSHOT] Saved: ${errorScreenshot}\n`);
     console.log(`      >>> [SCREENSHOT] Saved: ${errorScreenshot}\n`);
 
     await browser.close();

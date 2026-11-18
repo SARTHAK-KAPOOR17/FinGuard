@@ -121,6 +121,8 @@ export default function App() {
     if (newSev !== 'ALL') {
       setAlerts((prev) => prev.filter((a) => a.severity === newSev));
     }
+    // Immediately resync stats from backend on room switch
+    loadStats();
   };
 
   const handleStatusChange = (newStat) => {
@@ -151,6 +153,7 @@ export default function App() {
     setUserIdFilter('');
     setSortOrder('-createdAt');
     setPage(1);
+    loadStats();
   };
 
   // Reload alerts whenever filters or page changes (with debounced search)
@@ -166,11 +169,11 @@ export default function App() {
     socketManager.subscribeToRoom(severityFilter);
   }, [severityFilter]);
 
-  // Dynamic stats polling: 5s if filtered room, 30s if all-alerts
+  // Dynamic stats polling: 5s if filtered room, 10s if all-alerts
   useEffect(() => {
     loadStats();
     const isAll = severityFilter === 'ALL';
-    const intervalMs = isAll ? 30000 : 5000;
+    const intervalMs = isAll ? 10000 : 5000;
     const statsTimer = setInterval(loadStats, intervalMs);
 
     return () => clearInterval(statsTimer);
@@ -246,11 +249,17 @@ export default function App() {
           currentBySev[sev] = (currentBySev[sev] || 0) + 1;
           currentBySt[st] = (currentBySt[st] || 0) + 1;
 
+          const newTotal = prev.total + 1;
+          const score = typeof incomingAlert.riskScore === 'number' ? incomingAlert.riskScore : 0;
+          const currentSum = (prev.avgRiskScore || 0) * prev.total;
+          const newAvg = (currentSum + score) / newTotal;
+
           return {
             ...prev,
-            total: prev.total + 1,
+            total: newTotal,
             bySeverity: currentBySev,
             byStatus: currentBySt,
+            avgRiskScore: Math.round(newAvg * 10) / 10,
           };
         });
       }

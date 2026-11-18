@@ -57,7 +57,7 @@ export default function AlertDetailDrawer({ alert: initialAlert, onClose, onStat
     } catch (err) {
       const msg = err.message || 'Status transition failed';
       if (msg.includes('401') || msg.toLowerCase().includes('unauthorized') || msg.toLowerCase().includes('missing or invalid api key')) {
-        setErrorMsg('401 Unauthorized: Invalid or missing admin API key (check VITE_ADMIN_API_KEY)');
+        setErrorMsg('401 Unauthorized: Invalid or missing API key.');
       } else if (msg.includes('400') || msg.toLowerCase().includes('validation')) {
         setErrorMsg(`400 Bad Request: ${msg}`);
       } else {
@@ -207,23 +207,42 @@ export default function AlertDetailDrawer({ alert: initialAlert, onClose, onStat
           </div>
 
           {/* Audit Notes Timeline */}
-          <div className="space-y-2">
+          <div id="notes-timeline" className="space-y-2">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
               <FileText className="w-3.5 h-3.5 text-slate-400" /> Notes Timeline ({alert.notes?.length || 0})
             </h3>
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
               {alert.notes && alert.notes.length > 0 ? (
-                alert.notes.map((note, idx) => (
-                  <div key={idx} className="p-2.5 rounded-lg bg-slate-950/50 border border-slate-800/70 text-xs">
-                    <div className="flex items-center justify-between text-slate-400 mb-1">
-                      <span className="font-semibold text-slate-200">{note.author}</span>
-                      <span className="text-[10px] text-slate-500 font-mono">
-                        {note.createdAt ? new Date(note.createdAt).toLocaleString() : ''}
-                      </span>
+                alert.notes.map((note, idx) => {
+                  const isAudit = note.text?.startsWith('Status changed');
+                  return (
+                    <div
+                      key={idx}
+                      className={`p-2.5 rounded-lg border text-xs ${
+                        isAudit
+                          ? 'bg-amber-950/20 border-amber-900/40 text-amber-200/90'
+                          : 'bg-slate-950/50 border-slate-800/70 text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-slate-400 mb-1">
+                        <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+                          {note.author}
+                          {isAudit && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">
+                              AUDIT
+                            </span>
+                          )}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {note.createdAt ? new Date(note.createdAt).toLocaleString() : ''}
+                        </span>
+                      </div>
+                      <p className={isAudit ? 'text-amber-300 font-mono text-[11px]' : 'text-slate-300'}>
+                        {note.text}
+                      </p>
                     </div>
-                    <p className="text-slate-300">{note.text}</p>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <p className="text-xs text-slate-500 italic">No analyst notes recorded yet.</p>
               )}
@@ -232,11 +251,21 @@ export default function AlertDetailDrawer({ alert: initialAlert, onClose, onStat
         </div>
 
         {/* Drawer Footer: Actions */}
-        <div className="p-5 border-t border-slate-800 bg-slate-950/80 space-y-3">
+        <div className="p-5 border-t border-slate-800 bg-slate-950/80 space-y-3 shrink-0">
           {errorMsg && (
-            <div className="p-2.5 rounded-lg bg-red-950/60 border border-red-800/80 text-red-300 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-              <span>{errorMsg}</span>
+            <div className="p-2.5 rounded-lg bg-red-950/60 border border-red-800/80 text-red-300 text-xs flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                <span>{errorMsg}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setErrorMsg('')}
+                className="text-red-400 hover:text-red-200 p-0.5 rounded"
+                title="Dismiss error"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
           {successMsg && (
@@ -246,15 +275,21 @@ export default function AlertDetailDrawer({ alert: initialAlert, onClose, onStat
             </div>
           )}
 
-          {/* Optional Note Input */}
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Add investigation or audit note..."
-              value={analystNote}
-              onChange={(e) => setAnalystNote(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            />
+          {/* Optional Note Input with Analyst Indicator */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-[11px] text-slate-400">
+              <span>Investigation Note</span>
+              <span className="text-[10px] text-indigo-400 font-mono">Analyst: analyst_lead_sarah</span>
+            </div>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Add investigation or audit note..."
+                value={analystNote}
+                onChange={(e) => setAnalystNote(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
           </div>
 
           {/* Action Transition Buttons */}

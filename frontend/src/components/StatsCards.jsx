@@ -5,7 +5,11 @@ export default function StatsCards({ stats = {} }) {
   const total = stats.total || 0;
   const bySeverity = stats.bySeverity || { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
   const byStatus = stats.byStatus || { OPEN: 0, INVESTIGATING: 0, RESOLVED: 0, DISMISSED: 0 };
-  const avgRiskScore = typeof stats.avgRiskScore === 'number' ? stats.avgRiskScore.toFixed(1) : '0.0';
+  const avgRiskScore = typeof stats.avgRiskScore === 'number'
+    ? stats.avgRiskScore.toFixed(1)
+    : !isNaN(Number(stats.avgRiskScore))
+    ? Number(stats.avgRiskScore).toFixed(1)
+    : '0.0';
 
   const criticalCount = bySeverity.CRITICAL || 0;
   const highCount = bySeverity.HIGH || 0;
