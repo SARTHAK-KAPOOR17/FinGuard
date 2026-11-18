@@ -6,7 +6,8 @@
   "workspaces": [
     "services/*",
     "simulator",
-    "shared"
+    "shared",
+    "frontend"
   ],
   "scripts": {
     "infra:up": "docker-compose -f infra/docker-compose.yml up -d",
@@ -15,6 +16,8 @@
     "infra:status": "docker-compose -f infra/docker-compose.yml ps",
     "test:kafka": "node scripts/test-kafka-roundtrip.js",
     "simulate": "node simulator/src/index.js",
+    "dashboard:dev": "npm run dev --prefix frontend",
+    "dashboard:build": "npm run build --prefix frontend",
     "test": "npm run test --workspaces --if-present"
   },
   "keywords": [

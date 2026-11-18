@@ -10,7 +10,7 @@ const config = Object.freeze({
   env: process.env.NODE_ENV || 'development',
   logLevel: process.env.LOG_LEVEL || 'info',
   adminApiKey: process.env.ADMIN_API_KEY,
-  dashboardOrigin: process.env.DASHBOARD_ORIGIN || 'http://localhost:3000',
+  dashboardOrigin: process.env.DASHBOARD_ORIGIN || 'http://localhost:5173',
   kafka: {
     brokers: process.env.KAFKA_BROKERS || 'localhost:9092',
     clientId: process.env.KAFKA_CLIENT_ID || 'finguard-alert-service',
