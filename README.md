@@ -76,6 +76,21 @@ finguard/
   - **Simulator User Pool Scaling**: Added `--users` flag (default 5,000) eliminating velocity false positives for normal users.
   - **Pub/Sub Live Mutation**: Every CRUD and toggle operation broadcasts to Redis `rules:updated` for zero-downtime atomic engine reload. Verified live with new rule creation.
 
+## Phase 3 Milestones
+
+- [x] **Day 7: Real-Time Alert Service, Socket.io Streaming & Audit Lifecycle**
+  - **Kafka Flagged Consumer (`alert-service-group`)**: Subscribes to `transactions.flagged` with `fromBeginning=false` and strict post-persistence offset commit ordering.
+  - **Poison-Pill Protection**: Non-JSON and schema-invalid messages logged and committed without blocking partition pipelines.
+  - **Idempotent Persistence Layer**: Database-level unique index on `txnId` + `$setOnInsert` atomic upserts eliminate duplicate alert storage and prevent duplicate WebSocket alerts under at-least-once Kafka retries.
+  - **Highest-Severity Resolution**: Computed dynamically as $\text{CRITICAL} > \text{HIGH} > \text{MEDIUM} > \text{LOW}$.
+  - **Socket.io Real-Time Streaming**: Dispatches `alert:new` events with full alert payload to connected dashboard operators. Supports severity room subscriptions (`severity:CRITICAL`, `severity:HIGH`) and active connection metrics.
+  - **REST Management & $facet Aggregation**:
+    - `GET /alerts/stats`: Registered before `/:id` to prevent route shadowing; returns total, breakdown by severity, breakdown by status, top 5 rules, and average risk score in a single atomic database query.
+    - `GET /alerts`: Whitelisted Joi pagination (max 100 limit), sorting, and strict query filters (`severity`, `status`, `userId`, `ruleId`, date ranges) rejecting NoSQL injections.
+    - `GET /alerts/:id`: Resolves by UUID `alertId` or 24-character MongoDB `_id` with 400/404 handling.
+    - `PATCH /alerts/:id/status`: Constant-time API key authorization (`x-api-key`), enforcing status state machine transitions with automated analyst audit log entries.
+  - **End-to-End Live Verification**: Verified 100% pipeline consistency (Rule Engine Flagged: 76 == MongoDB Alerts: 76 == Socket.io Events: 76) with live deduplication and audit tracking.
+
 ---
 
 ## Transaction Ingestion API
@@ -120,6 +135,58 @@ The Rule Engine runs on port `3002` and consumes `transactions.raw` in real-time
 | `RULE_SUSPICIOUS_MERCHANT` | `merchant_regex` | `CRITICAL` | Flags transactions at luxury, offshore crypto, or casino merchants | Regex pattern match |
 | `RULE_VELOCITY` | `velocity` | `HIGH` | Flags rapid bursts of transactions from a single user | > 5 txns within 10 seconds |
 | `RULE_LOCATION_JUMP` | `geo_jump` | `CRITICAL` | Flags impossible travel between distant locations/countries | > 900 km/h or cross-country < 300s |
+
+---
+
+## Alert & Notification Service
+
+The Alert Service runs on port `3003`, consuming `transactions.flagged` and broadcasting live alerts to UI dashboards:
+
+### REST Endpoints
+- `GET /health`: Service health, consumer metrics, and active WebSocket connection count.
+- `GET /alerts/stats`: Aggregated metrics via single `$facet` pipeline (total, bySeverity, byStatus, topRules, avgRiskScore). Registered before `/:id`.
+- `GET /alerts`: Paginated list of alerts (page, limit $\le 100$, sort by `createdAt` or `riskScore`) with strict whitelisted filters (`severity`, `status`, `userId`, `ruleId`, `startDate`, `endDate`).
+- `GET /alerts/:id`: Fetch alert by UUID `alertId` or 24-character MongoDB `_id`.
+- `PATCH /alerts/:id/status`: Transition alert status with API key authorization (`x-api-key`). Automatically appends custom analyst notes and audit log entries.
+
+### Alert Lifecycle Transitions
+| Current Status | Allowed Target Statuses | Rules & Rationale |
+|---|---|---|
+| `OPEN` | `INVESTIGATING`, `DISMISSED` | Analysts claim for review or fast-dismiss benign patterns. |
+| `INVESTIGATING` | `RESOLVED`, `DISMISSED`, `OPEN` | Confirm fraud, clear false-positive, or return to unassigned triage pool. |
+| `RESOLVED` | `INVESTIGATING` | **Reopen allowed**: Triggered on customer disputes or chargebacks. Direct transition to `OPEN` prohibited. |
+| `DISMISSED` | `INVESTIGATING` | **Reopen allowed**: Triggered on audit escalations or false-negatives. Direct transition to `OPEN` prohibited. |
+
+### Real-Time Socket.io Events
+- **Server Port**: `3003` (CORS restricted to `DASHBOARD_ORIGIN`)
+- **Event**: `alert:new`
+- **Default Stream**: All connected clients receive all alerts via `all-alerts` channel.
+- **Severity Room Subscriptions**: Clients emit `subscribe` with room name (e.g. `severity:CRITICAL`, `severity:HIGH`) to isolate specific severity tiers without receiving duplicate broadcasts.
+- **Payload Schema**:
+  ```json
+  {
+    "alertId": "uuid-v4",
+    "txnId": "uuid-v4",
+    "userId": "usr_12345",
+    "amount": 15000,
+    "currency": "USD",
+    "merchant": "Rolex Boutique",
+    "location": { "city": "Geneva", "country": "CH", "lat": 46.2, "lng": 6.14 },
+    "matchedRules": [
+      {
+        "ruleId": "RULE_LARGE_AMOUNT",
+        "ruleName": "High Transaction Amount",
+        "severity": "HIGH",
+        "reason": "Amount > 10000"
+      }
+    ],
+    "riskScore": 75,
+    "severity": "HIGH",
+    "status": "OPEN",
+    "flaggedAt": "2026-11-18T04:19:20.000Z",
+    "createdAt": "2026-11-18T04:19:20.015Z"
+  }
+  ```
 
 ---
 
