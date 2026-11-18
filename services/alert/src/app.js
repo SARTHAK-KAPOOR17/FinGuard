@@ -21,11 +21,11 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// CORS middleware supporting configured dashboard origins
+// CORS middleware supporting configured dashboard origins from env
 app.use((req, res, next) => {
-  const allowedOrigins = [config.dashboardOrigin, 'http://localhost:5173', 'http://localhost:3000'].filter(Boolean);
+  const allowedOrigins = config.dashboardOrigins;
   const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
+  if (origin && allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key');

@@ -8,7 +8,7 @@ class WebSocketService {
   constructor(server = null, options = {}) {
     this.io = null;
     this.activeConnections = 0;
-    this.dashboardOrigin = options.dashboardOrigin || config.dashboardOrigin || 'http://localhost:3000';
+    this.dashboardOrigins = options.dashboardOrigins || config.dashboardOrigins || ['http://localhost:5173'];
 
     if (server) {
       this.attach(server);
@@ -20,7 +20,7 @@ class WebSocketService {
 
     this.io = new Server(server, {
       cors: {
-        origin: [this.dashboardOrigin, 'http://localhost:5173', 'http://localhost:3000'].filter(Boolean),
+        origin: this.dashboardOrigins.length === 1 ? this.dashboardOrigins[0] : this.dashboardOrigins,
         methods: ['GET', 'POST'],
         credentials: true,
       },
