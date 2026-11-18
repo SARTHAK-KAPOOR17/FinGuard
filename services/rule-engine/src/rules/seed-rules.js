@@ -30,7 +30,7 @@ const SEED_RULES = [
     name: 'High Frequency Velocity Check',
     description: 'Flags users making more than N transactions within a sliding time window',
     type: 'VELOCITY',
-    severity: 'HIGH',
+    severity: 'MEDIUM',
     enabled: true,
     config: {
       windowSeconds: 10,

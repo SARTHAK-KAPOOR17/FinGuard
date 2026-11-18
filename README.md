@@ -133,7 +133,7 @@ The Rule Engine runs on port `3002` and consumes `transactions.raw` in real-time
 |---|---|---|---|---|
 | `RULE_LARGE_AMOUNT` | `amount_threshold` | `HIGH` | Flags transactions with amount > threshold in USD | Amount > $10,000 USD |
 | `RULE_SUSPICIOUS_MERCHANT` | `merchant_regex` | `CRITICAL` | Flags transactions at luxury, offshore crypto, or casino merchants | Regex pattern match |
-| `RULE_VELOCITY` | `velocity` | `HIGH` | Flags rapid bursts of transactions from a single user | > 5 txns within 10 seconds |
+| `RULE_VELOCITY` | `velocity` | `MEDIUM` | Flags rapid bursts of transactions from a single user | > 5 txns within 10 seconds |
 | `RULE_LOCATION_JUMP` | `geo_jump` | `CRITICAL` | Flags impossible travel between distant locations/countries | > 900 km/h or cross-country < 300s |
 
 ---

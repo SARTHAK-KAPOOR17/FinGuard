@@ -113,7 +113,7 @@ describe('RuleEvaluator & Stateful Rules', () => {
         expect.arrayContaining([
           expect.objectContaining({
             ruleId: 'RULE_VELOCITY',
-            severity: 'HIGH',
+            severity: 'MEDIUM',
           }),
         ])
       );
