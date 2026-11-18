@@ -1,4 +1,6 @@
 const config = require('../config');
+const { alertConsumerService } = require('./alert-consumer.service');
+const { wsService } = require('./websocket.service');
 
 class HealthService {
   getHealthStatus() {
@@ -8,6 +10,8 @@ class HealthService {
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
       environment: config.env,
+      consumer: alertConsumerService ? alertConsumerService.getMetrics() : null,
+      websocket: wsService ? { activeConnections: wsService.getActiveConnections() } : null,
     };
   }
 }

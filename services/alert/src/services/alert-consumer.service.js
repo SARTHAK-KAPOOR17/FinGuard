@@ -1,4 +1,4 @@
-const { createConsumer, createLogger } = require('@finguard/shared');
+const { createKafkaClient, createConsumer, createLogger } = require('@finguard/shared');
 const config = require('../config');
 const defaultPersistenceService = require('./alert-persistence.service');
 
@@ -24,11 +24,12 @@ class AlertConsumerService {
     if (this.isRunning) return;
 
     if (!this.consumer) {
-      this.consumer = createConsumer({
-        groupId: config.kafka.consumerGroupId,
-        brokers: [config.kafka.brokers],
+      const kafka = createKafkaClient({
         clientId: config.kafka.clientId,
-        fromBeginning: config.kafka.fromBeginning,
+        brokers: [config.kafka.brokers],
+      });
+      this.consumer = createConsumer(kafka, {
+        groupId: config.kafka.consumerGroupId,
       });
     }
 
