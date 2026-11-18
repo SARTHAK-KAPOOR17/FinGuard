@@ -194,23 +194,60 @@ The Alert Service runs on port `3003`, consuming `transactions.flagged` and broa
 
 A React 19 + Vite 8 + Tailwind CSS frontend dashboard providing fraud analysts with live threat surveillance, metrics, and incident triage.
 
+### End-to-End Streaming Architecture
+
+```mermaid
+flowchart LR
+    A["Traffic Simulator<br/>(100 txns/sec)"] -->|"HTTP POST /transactions"| B["Ingestion Service<br/>(Port 3001)"]
+    B -->|"transactions.raw"| K1["Kafka Broker<br/>(Port 9092)"]
+    K1 -->|"Consumer Group"| C["Rule Engine<br/>(Port 3002)"]
+    C <-->|"Sliding Window & Geo"| R["Redis<br/>(Port 6379)"]
+    C <-->|"Rule Definitions"| M1["MongoDB<br/>(Port 27017)"]
+    C -->|"transactions.flagged"| K2["Kafka Broker<br/>(Port 9092)"]
+    K2 -->|"alert-service-group"| D["Alert Service<br/>(Port 3003)"]
+    D -->|"Unique Upsert"| M2["MongoDB Alerts<br/>(Collection: alerts)"]
+    D -->|"Socket.io (alert:new)"| E["Vite Dev Proxy<br/>(Port 5173 /api, /socket.io)"]
+    E -->|"WebSocket Stream"| F["React Operations Center<br/>(Dashboard Browser UI)"]
+```
+
 ### Quick Start
 ```bash
-# Start frontend dev server on http://localhost:5173
+# 1. Start core infrastructure (Kafka, MongoDB, Redis)
+npm run infra:up
+
+# 2. Start backend microservices (in separate terminals or dev mode)
+node services/alert/src/index.js       # Port 3003
+node services/rule-engine/src/index.js  # Port 3002
+node services/ingestion/src/index.js    # Port 3001
+
+# 3. Start frontend dev server on http://localhost:5173
 npm run dashboard:dev
 
-# Or navigate to directory
-cd frontend
-npm install
-npm run dev
+# 4. Generate transaction traffic
+npm run simulate -- --rate 100 --duration 30 --users 5000
 ```
 
 ### Architecture & Capabilities
-- **Live WebSocket Feed**: Connects to Alert Service (`http://localhost:3003/socket.io`) with automatic reconnect, exponential backoff (1s - 5s max), and live connection badge (`Connected`, `Reconnecting`, `Disconnected`).
-- **200 In-Memory Ring Buffer**: Live feed keeps the latest 200 alerts in-memory with FIFO eviction. Newly received alerts animate with a red alert pulse.
-- **Severity Room Subscription**: Filtering by severity dynamically unsubscribes from previous channels and subscribes to `severity:<LEVEL>` to isolate high-priority traffic.
-- **Authoritative Metrics Cards**: Real-time counter increments on every `alert:new`, with an automated 30-second background resync via `GET /alerts/stats` to ensure consistency with MongoDB aggregations.
-- **Incident Inspection Drawer**: Click any alert row to view metadata, geographic coordinates, triggered rule breakdown, and status transition workflows (`OPEN` -> `INVESTIGATING` -> `RESOLVED` / `DISMISSED`).
+- **Live WebSocket Feed**: Connects to Alert Service via Vite Dev Proxy (`http://localhost:5173/socket.io`) with automatic reconnect, exponential backoff (1s - 5s max), and live reactive connection badge (`LIVE FEED CONNECTED`, `RECONNECTING...`, `DISCONNECTED`).
+- **Throttled 250ms Batch Ingestion & 200 FIFO Ring Buffer**: Live feed buffers incoming events and flushes to React state in 250ms intervals, deduplicating incoming events and maintaining a strict 200 in-memory FIFO cap.
+- **Severity Room Isolation**: Switching severity filters (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`) automatically emits Socket.io `subscribe` / `unsubscribe` commands to isolate target traffic over the wire with 0 leaks and 0 dropped alerts.
+- **Authoritative Metrics Cards**: Independent cards for Total, Critical, High, Medium, Active Queue, and Avg Risk Score. Incremented client-side when in `all-alerts` mode, with a periodic 5s/30s background resync via `GET /alerts/stats` against MongoDB.
+- **Pagination & Historical Mode**: Page 1 displays real-time live prepending. Navigating to Page > 1 activates `Historical mode`, pausing live prepending to allow uninterrupted review of historical records.
+- **Incident Inspection Drawer**: Click any alert row to view metadata, geographic coordinates, triggered rule breakdown with exact parameters (haversine distance, speed, burst count), notes timeline, and state machine transition workflows (`OPEN` -> `INVESTIGATING` -> `RESOLVED` / `DISMISSED`).
+
+### Visual Showcase & Verification Screenshots
+
+#### 1. Real-Time Live Feed Table & Global Metrics
+![Live Feed](docs/screenshots/live-feed.png)
+
+#### 2. Severity Room Filtered View (Pure CRITICAL Threats)
+![Filtered Critical Alerts](docs/screenshots/filtered-critical.png)
+
+#### 3. Alert Inspection Drawer & Status Lifecycle Mutation
+![Alert Inspection Drawer](docs/screenshots/drawer-investigating.png)
+
+#### 4. Privileged RBAC Authorization & 401 Error Handling
+![401 Unauthorized Error Handling](docs/screenshots/error-401.png)
 
 > [!WARNING]
 > **Security Notice regarding `VITE_ADMIN_API_KEY`:**

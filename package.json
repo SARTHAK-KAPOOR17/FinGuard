@@ -18,6 +18,7 @@
     "simulate": "node simulator/src/index.js",
     "dashboard:dev": "npm run dev --prefix frontend",
     "dashboard:build": "npm run build --prefix frontend",
+    "test:e2e": "node scripts/verify-day8-e2e.js",
     "test": "npm run test --workspaces --if-present"
   },
   "keywords": [
@@ -32,5 +33,8 @@
   "license": "ISC",
   "engines": {
     "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.65.1"
   }
 }

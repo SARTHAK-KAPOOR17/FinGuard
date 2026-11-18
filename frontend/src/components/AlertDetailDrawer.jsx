@@ -11,11 +11,16 @@ const STATUS_CONFIG = {
   DISMISSED: { bg: 'bg-slate-700/30 text-slate-400 border-slate-700/50' },
 };
 
-export default function AlertDetailDrawer({ alert, onClose, onStatusUpdated }) {
+export default function AlertDetailDrawer({ alert: initialAlert, onClose, onStatusUpdated }) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [analystNote, setAnalystNote] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [alert, setAlert] = useState(initialAlert);
+
+  React.useEffect(() => {
+    setAlert(initialAlert);
+  }, [initialAlert]);
 
   if (!alert) return null;
 
@@ -43,6 +48,7 @@ export default function AlertDetailDrawer({ alert, onClose, onStatusUpdated }) {
         analyst: 'analyst_lead_sarah',
         note: analystNote.trim(),
       });
+      setAlert(updated);
       setSuccessMsg(`Status successfully transitioned to ${newStatus}`);
       setAnalystNote('');
       if (onStatusUpdated) {

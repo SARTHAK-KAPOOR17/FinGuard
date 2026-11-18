@@ -14,11 +14,20 @@ const path = require('path');
 const { io } = require('socket.io-client');
 const mongoose = require('mongoose');
 const Redis = require('ioredis');
+const dotenv = require('dotenv');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
+dotenv.config({ path: path.resolve(ROOT_DIR, '.env') });
+dotenv.config({ path: path.resolve(ROOT_DIR, 'services/alert/.env') });
+dotenv.config({ path: path.resolve(ROOT_DIR, 'frontend/.env') });
+
+const TEST_API_KEY = process.env.ADMIN_API_KEY || process.env.VITE_ADMIN_API_KEY;
+if (!TEST_API_KEY) {
+  throw new Error('ADMIN_API_KEY or VITE_ADMIN_API_KEY must be defined in .env');
+}
+
 const VERIFY_DB_NAME = 'finguard_verify_day8';
 const MONGO_URI = `mongodb://root:example@localhost:27017/${VERIFY_DB_NAME}?authSource=admin`;
-const TEST_API_KEY = 'finguard-test-admin-key-2026';
 const VITE_PORT = 5173;
 const ALERT_PORT = 3003;
 const INGESTION_PORT = 3001;
@@ -202,6 +211,11 @@ async function run() {
     proxySocket.emit('subscribe', 'severity:CRITICAL');
     await sleep(1000);
 
+    // Track CRITICAL alerts before the burst in MongoDB
+    await mongoose.connect(MONGO_URI);
+    const dbInstance = mongoose.connection;
+    const criticalBefore = await dbInstance.collection('alerts').countDocuments({ severity: 'CRITICAL' });
+
     const roomAlerts = [];
     const roomListener = (alert) => {
       roomAlerts.push(alert);
@@ -222,16 +236,28 @@ async function run() {
       { cwd: ROOT_DIR, stdio: 'ignore' }
     );
     await new Promise((resolve) => burstChild.on('close', resolve));
-    await sleep(5000);
+    await sleep(6000);
 
     proxySocket.off('alert:new', roomListener);
+
+    const criticalAfter = await dbInstance.collection('alerts').countDocuments({ severity: 'CRITICAL' });
+    const mongoCriticalBurst = criticalAfter - criticalBefore;
+    await mongoose.disconnect();
+
     console.log(`      - Filtered alerts received in severity:CRITICAL room: ${roomAlerts.length}`);
+    console.log(`      - MongoDB CRITICAL alerts generated during burst: ${mongoCriticalBurst}`);
+
     const nonCritical = roomAlerts.filter((a) => a.severity !== 'CRITICAL');
     if (nonCritical.length > 0) {
       throw new Error(`Room leak detected: received non-critical alerts: ${JSON.stringify(nonCritical)}`);
     }
     console.log('      - Non-critical alerts leaked: 0 (100% pure CRITICAL alerts)');
-    console.log('      >>> [PASSED] Severity room switching isolates target traffic!\n');
+
+    if (roomAlerts.length !== mongoCriticalBurst) {
+      throw new Error(`Missing alerts: WebSocket received ${roomAlerts.length} alerts but MongoDB recorded ${mongoCriticalBurst} CRITICAL alerts!`);
+    }
+    console.log(`      - Missing alerts check: 0 (WebSocket count ${roomAlerts.length} matches MongoDB CRITICAL count ${mongoCriticalBurst})`);
+    console.log('      >>> [PASSED] Severity room switching isolates target traffic with zero leaks and zero missing alerts!\n');
 
     // 7. Test Auto-Reconnect: Restart Alert Service
     console.log('[7/7] Testing WebSocket Auto-Reconnect & State Transitions...');

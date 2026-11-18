@@ -90,11 +90,20 @@ export default function App() {
       setTotalCount(result.total || 0);
 
       setAlerts((prev) => {
-        // If on page 1, merge with any live alerts that arrived recently without duplicate keys
+        // If on page 1, merge with any live alerts that arrived recently and match current filters
         if (page === 1) {
           const fetchedIds = new Set(fetchedAlerts.map((a) => a.alertId));
-          const existingRecent = prev.filter((a) => !fetchedIds.has(a.alertId));
-          return [...existingRecent, ...fetchedAlerts].slice(0, MAX_BUFFER_CAP);
+          const matchingRecent = prev.filter((a) => {
+            if (fetchedIds.has(a.alertId)) return false;
+            const matchSev = severityFilter === 'ALL' || a.severity === severityFilter;
+            const matchSt = statusFilter === 'ALL' || a.status === statusFilter;
+            const matchUser =
+              !userIdFilter ||
+              !userIdFilter.trim() ||
+              (a.userId && a.userId.toLowerCase().includes(userIdFilter.toLowerCase().trim()));
+            return matchSev && matchSt && matchUser;
+          });
+          return [...matchingRecent, ...fetchedAlerts].slice(0, MAX_BUFFER_CAP);
         }
         return fetchedAlerts;
       });
@@ -105,20 +114,30 @@ export default function App() {
     }
   }, [page, severityFilter, statusFilter, userIdFilter, sortOrder]);
 
-  // Reset to page 1 whenever filters change
+  // Reset to page 1 whenever filters change and immediately prune unmatching alerts
   const handleSeverityChange = (newSev) => {
     setSeverityFilter(newSev);
     setPage(1);
+    if (newSev !== 'ALL') {
+      setAlerts((prev) => prev.filter((a) => a.severity === newSev));
+    }
   };
 
   const handleStatusChange = (newStat) => {
     setStatusFilter(newStat);
     setPage(1);
+    if (newStat !== 'ALL') {
+      setAlerts((prev) => prev.filter((a) => a.status === newStat));
+    }
   };
 
   const handleUserIdChange = (newUid) => {
     setUserIdFilter(newUid);
     setPage(1);
+    if (newUid.trim()) {
+      const q = newUid.toLowerCase().trim();
+      setAlerts((prev) => prev.filter((a) => a.userId && a.userId.toLowerCase().includes(q)));
+    }
   };
 
   const handleSortChange = (newSort) => {
