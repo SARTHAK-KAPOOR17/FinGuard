@@ -8,6 +8,8 @@ import { fetchAlerts, fetchAlertStats } from './services/api';
 import { socketManager } from './services/socket';
 
 const MAX_BUFFER_CAP = 200;
+const BATCH_FLUSH_INTERVAL_MS = 250;
+const PAGE_LIMIT = 20;
 
 export default function App() {
   const [connectionState, setConnectionState] = useState('disconnected');
@@ -19,33 +21,43 @@ export default function App() {
     avgRiskScore: 0,
   });
 
-  // Filter state
+  // Filter & Pagination state
   const [severityFilter, setSeverityFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [userIdFilter, setUserIdFilter] = useState('');
-  const [sortOrder, setSortOrder] = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState('-createdAt');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
   // UI state
   const [isLoading, setIsLoading] = useState(true);
   const [selectedAlert, setSelectedAlert] = useState(null);
   const [recentAlertIds, setRecentAlertIds] = useState(new Set());
 
-  // References to keep filter state accessible in socket callback
-  const filtersRef = useRef({
+  // Ref buffer for batching incoming WebSocket events every 250ms
+  const pendingBatchRef = useRef([]);
+
+  // Active filters and page ref for asynchronous socket callbacks
+  const filterStateRef = useRef({
     severity: severityFilter,
     status: statusFilter,
     userId: userIdFilter,
+    page: 1,
+    isAllAlertsRoom: true,
   });
 
   useEffect(() => {
-    filtersRef.current = {
+    filterStateRef.current = {
       severity: severityFilter,
       status: statusFilter,
       userId: userIdFilter,
+      page,
+      isAllAlertsRoom: severityFilter === 'ALL',
     };
-  }, [severityFilter, statusFilter, userIdFilter]);
+  }, [severityFilter, statusFilter, userIdFilter, page]);
 
-  // Load initial stats from REST API
+  // Load stats from REST API
   const loadStats = useCallback(async () => {
     try {
       const data = await fetchAlertStats();
@@ -60,40 +72,139 @@ export default function App() {
     }
   }, []);
 
-  // Load alerts with current filters from REST API
+  // Load alerts with current filters & pagination from REST API
   const loadAlerts = useCallback(async () => {
     setIsLoading(true);
     try {
       const result = await fetchAlerts({
-        page: 1,
-        limit: 100,
+        page,
+        limit: PAGE_LIMIT,
         severity: severityFilter,
         status: statusFilter,
         userId: userIdFilter,
         sort: sortOrder,
       });
-      setAlerts(result.data || []);
+
+      const fetchedAlerts = result.data || [];
+      setTotalPages(result.totalPages || 1);
+      setTotalCount(result.total || 0);
+
+      setAlerts((prev) => {
+        // If on page 1, merge with any live alerts that arrived recently without duplicate keys
+        if (page === 1) {
+          const fetchedIds = new Set(fetchedAlerts.map((a) => a.alertId));
+          const existingRecent = prev.filter((a) => !fetchedIds.has(a.alertId));
+          return [...existingRecent, ...fetchedAlerts].slice(0, MAX_BUFFER_CAP);
+        }
+        return fetchedAlerts;
+      });
     } catch (err) {
       console.error('Failed to load alerts:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [severityFilter, statusFilter, userIdFilter, sortOrder]);
+  }, [page, severityFilter, statusFilter, userIdFilter, sortOrder]);
 
-  // Reload alerts when filters change
+  // Reset to page 1 whenever filters change
+  const handleSeverityChange = (newSev) => {
+    setSeverityFilter(newSev);
+    setPage(1);
+  };
+
+  const handleStatusChange = (newStat) => {
+    setStatusFilter(newStat);
+    setPage(1);
+  };
+
+  const handleUserIdChange = (newUid) => {
+    setUserIdFilter(newUid);
+    setPage(1);
+  };
+
+  const handleSortChange = (newSort) => {
+    setSortOrder(newSort);
+    setPage(1);
+  };
+
+  const handleResetFilters = () => {
+    setSeverityFilter('ALL');
+    setStatusFilter('ALL');
+    setUserIdFilter('');
+    setSortOrder('-createdAt');
+    setPage(1);
+  };
+
+  // Reload alerts whenever filters or page changes (with debounced search)
   useEffect(() => {
     const timer = setTimeout(() => {
       loadAlerts();
-    }, 250); // slight debounce for search input
+    }, 200);
     return () => clearTimeout(timer);
   }, [loadAlerts]);
 
-  // Handle severity room switching on filter change
+  // Subscribe/unsubscribe socket room when severity filter changes
   useEffect(() => {
     socketManager.subscribeToRoom(severityFilter);
   }, [severityFilter]);
 
-  // WebSocket listener setup & periodic stats sync
+  // Dynamic stats polling: 5s if filtered room, 30s if all-alerts
+  useEffect(() => {
+    loadStats();
+    const isAll = severityFilter === 'ALL';
+    const intervalMs = isAll ? 30000 : 5000;
+    const statsTimer = setInterval(loadStats, intervalMs);
+
+    return () => clearInterval(statsTimer);
+  }, [severityFilter, loadStats]);
+
+  // 250ms batch flushing loop
+  useEffect(() => {
+    const flushInterval = setInterval(() => {
+      if (pendingBatchRef.current.length === 0) return;
+
+      // Drain pending queue
+      const batch = pendingBatchRef.current;
+      pendingBatchRef.current = [];
+
+      // Only prepend to live feed if user is on Page 1
+      if (filterStateRef.current.page === 1) {
+        setAlerts((prev) => {
+          // Deduplicate within batch and against previous alerts
+          const seen = new Set();
+          const uniqueBatch = [];
+          for (const item of batch) {
+            if (!seen.has(item.alertId)) {
+              seen.add(item.alertId);
+              uniqueBatch.push(item);
+            }
+          }
+
+          const existingWithoutBatch = prev.filter((a) => !seen.has(a.alertId));
+          return [...uniqueBatch, ...existingWithoutBatch].slice(0, MAX_BUFFER_CAP);
+        });
+
+        // Trigger red alert pulse animation on newly arrived IDs
+        const newIds = batch.map((a) => a.alertId);
+        setRecentAlertIds((prev) => {
+          const next = new Set(prev);
+          newIds.forEach((id) => next.add(id));
+          return next;
+        });
+
+        setTimeout(() => {
+          setRecentAlertIds((prev) => {
+            const next = new Set(prev);
+            newIds.forEach((id) => next.delete(id));
+            return next;
+          });
+        }, 2000);
+      }
+    }, BATCH_FLUSH_INTERVAL_MS);
+
+    return () => clearInterval(flushInterval);
+  }, []);
+
+  // Socket connection and incoming event handling
   useEffect(() => {
     socketManager.connect();
 
@@ -102,27 +213,30 @@ export default function App() {
     });
 
     const unsubAlert = socketManager.onAlert((incomingAlert) => {
-      // 1. Immediately update global stats counters
-      setStats((prev) => {
-        const sev = incomingAlert.severity || 'LOW';
-        const st = incomingAlert.status || 'OPEN';
-        const newTotal = prev.total + 1;
-        const currentBySev = { ...prev.bySeverity };
-        const currentBySt = { ...prev.byStatus };
+      const { isAllAlertsRoom, severity, status, userId } = filterStateRef.current;
 
-        currentBySev[sev] = (currentBySev[sev] || 0) + 1;
-        currentBySt[st] = (currentBySt[st] || 0) + 1;
+      // FIX B (1): Only increment global counters if in all-alerts room.
+      // If room is filtered, stats polling handles accuracy.
+      if (isAllAlertsRoom) {
+        setStats((prev) => {
+          const sev = incomingAlert.severity || 'LOW';
+          const st = incomingAlert.status || 'OPEN';
+          const currentBySev = { ...prev.bySeverity };
+          const currentBySt = { ...prev.byStatus };
 
-        return {
-          ...prev,
-          total: newTotal,
-          bySeverity: currentBySev,
-          byStatus: currentBySt,
-        };
-      });
+          currentBySev[sev] = (currentBySev[sev] || 0) + 1;
+          currentBySt[st] = (currentBySt[st] || 0) + 1;
 
-      // 2. Check if incoming alert matches active client-side filters
-      const { severity, status, userId } = filtersRef.current;
+          return {
+            ...prev,
+            total: prev.total + 1,
+            bySeverity: currentBySev,
+            byStatus: currentBySt,
+          };
+        });
+      }
+
+      // Check client-side filter match
       const matchesSeverity = severity === 'ALL' || incomingAlert.severity === severity;
       const matchesStatus = status === 'ALL' || incomingAlert.status === status;
       const matchesUser =
@@ -131,88 +245,65 @@ export default function App() {
         (incomingAlert.userId && incomingAlert.userId.toLowerCase().includes(userId.toLowerCase().trim()));
 
       if (matchesSeverity && matchesStatus && matchesUser) {
-        // Prepend to alerts list, capping at 200 items (FIFO ring buffer)
-        setAlerts((prev) => {
-          // Avoid duplicate keys if duplicate event arrives
-          const filtered = prev.filter((a) => a.alertId !== incomingAlert.alertId);
-          return [incomingAlert, ...filtered].slice(0, MAX_BUFFER_CAP);
-        });
-
-        // Trigger flash pulse animation for 2 seconds
-        setRecentAlertIds((prev) => new Set(prev).add(incomingAlert.alertId));
-        setTimeout(() => {
-          setRecentAlertIds((prev) => {
-            const next = new Set(prev);
-            next.delete(incomingAlert.alertId);
-            return next;
-          });
-        }, 2000);
+        // FIX B (2): Push to pending buffer for 250ms batch flushing
+        pendingBatchRef.current.push(incomingAlert);
+        setTotalCount((c) => c + 1);
       }
     });
-
-    // Initial stats load
-    loadStats();
-
-    // 30s periodic resync with MongoDB authoritative aggregation
-    const statsInterval = setInterval(loadStats, 30000);
 
     return () => {
       unsubStatus();
       unsubAlert();
-      clearInterval(statsInterval);
     };
-  }, [loadStats]);
+  }, []);
 
   // Handle status update from AlertDetailDrawer
   const handleStatusUpdated = (updatedAlert) => {
-    // Update local alert in list
     setAlerts((prev) =>
       prev.map((a) => (a.alertId === updatedAlert.alertId ? updatedAlert : a))
     );
     setSelectedAlert(updatedAlert);
-    // Refresh stats
     loadStats();
-  };
-
-  const handleResetFilters = () => {
-    setSeverityFilter('ALL');
-    setStatusFilter('ALL');
-    setUserIdFilter('');
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-      {/* Top Navigation & Connection Status */}
+      {/* Top Header & Connection Status */}
       <Header
         connectionState={connectionState}
         bufferCount={alerts.length}
         isMaxReached={alerts.length >= MAX_BUFFER_CAP}
       />
 
-      {/* Main Operations Content */}
+      {/* Main Operations Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {/* Real-time Global Stats Cards */}
+        {/* Real-time Global Stats Cards (Now with Separate High & Medium Cards) */}
         <StatsCards stats={stats} />
 
         {/* Filter & Search Bar */}
         <FilterBar
           severity={severityFilter}
-          setSeverity={setSeverityFilter}
+          setSeverity={handleSeverityChange}
           status={statusFilter}
-          setStatus={setStatusFilter}
+          setStatus={handleStatusChange}
           userId={userIdFilter}
-          setUserId={setUserIdFilter}
+          setUserId={handleUserIdChange}
           sort={sortOrder}
-          setSort={setSortOrder}
+          setSort={handleSortChange}
           onResetFilters={handleResetFilters}
         />
 
-        {/* Live Alerts Feed Table */}
+        {/* Live Alerts Feed Table with Pagination Controls */}
         <AlertFeed
           alerts={alerts}
           recentAlertIds={recentAlertIds}
           onSelectAlert={setSelectedAlert}
           isLoading={isLoading}
+          page={page}
+          setPage={setPage}
+          totalPages={totalPages}
+          totalCount={totalCount}
+          limit={PAGE_LIMIT}
         />
       </main>
 

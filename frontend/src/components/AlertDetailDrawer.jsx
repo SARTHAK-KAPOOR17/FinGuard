@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ShieldAlert, MapPin, Clock, DollarSign, User, Store, Check, AlertCircle, FileText, Send } from 'lucide-react';
+import { X, ShieldAlert, MapPin, Clock, DollarSign, User, Store, Check, AlertCircle, FileText, Send, RotateCcw } from 'lucide-react';
 import SeverityBadge from './SeverityBadge';
 import RiskScoreBar from './RiskScoreBar';
 import { updateAlertStatus } from '../services/api';
@@ -21,10 +21,17 @@ export default function AlertDetailDrawer({ alert, onClose, onStatusUpdated }) {
 
   const statusStyle = STATUS_CONFIG[alert.status] || STATUS_CONFIG.OPEN;
 
-  // Allowed transitions matching FinGuard Alert Service state machine
-  const canInvestigate = alert.status === 'OPEN' || alert.status === 'DISMISSED';
+  // Strict transitions allowed by FinGuard Alert State Machine
+  // OPEN -> INVESTIGATING, DISMISSED
+  // INVESTIGATING -> RESOLVED, DISMISSED, OPEN
+  // RESOLVED -> INVESTIGATING (reopen)
+  // DISMISSED -> INVESTIGATING (reopen)
+  const canInvestigate = alert.status === 'OPEN';
+  const canReopen = alert.status === 'RESOLVED' || alert.status === 'DISMISSED';
   const canResolve = alert.status === 'INVESTIGATING';
   const canDismiss = alert.status === 'OPEN' || alert.status === 'INVESTIGATING';
+  const canReQueue = alert.status === 'INVESTIGATING';
+  const canAddNoteOnly = alert.status === 'INVESTIGATING';
 
   const handleStatusChange = async (newStatus) => {
     setIsUpdating(true);
@@ -36,13 +43,20 @@ export default function AlertDetailDrawer({ alert, onClose, onStatusUpdated }) {
         analyst: 'analyst_lead_sarah',
         note: analystNote.trim(),
       });
-      setSuccessMsg(`Status updated to ${newStatus}`);
+      setSuccessMsg(`Status successfully transitioned to ${newStatus}`);
       setAnalystNote('');
       if (onStatusUpdated) {
         onStatusUpdated(updated);
       }
     } catch (err) {
-      setErrorMsg(err.message || 'Status transition failed');
+      const msg = err.message || 'Status transition failed';
+      if (msg.includes('401') || msg.toLowerCase().includes('unauthorized') || msg.toLowerCase().includes('missing or invalid api key')) {
+        setErrorMsg('401 Unauthorized: Invalid or missing admin API key (check VITE_ADMIN_API_KEY)');
+      } else if (msg.includes('400') || msg.toLowerCase().includes('validation')) {
+        setErrorMsg(`400 Bad Request: ${msg}`);
+      } else {
+        setErrorMsg(msg);
+      }
     } finally {
       setIsUpdating(false);
     }
@@ -74,7 +88,7 @@ export default function AlertDetailDrawer({ alert, onClose, onStatusUpdated }) {
           <div>
             <h2 className="text-lg font-bold text-white tracking-tight">Alert Inspection</h2>
             <div className="mt-1 space-y-0.5 text-xs font-mono text-slate-400">
-              <p>Alert ID: <span className="text-slate-200">{alert.alertId}</span></p>
+              <p>Alert ID: <span className="text-slate-200 font-semibold">{alert.alertId}</span></p>
               <p>Txn ID: <span className="text-slate-400">{alert.txnId}</span></p>
             </div>
           </div>
@@ -125,7 +139,12 @@ export default function AlertDetailDrawer({ alert, onClose, onStatusUpdated }) {
                   <span className="text-white font-medium">
                     {alert.location?.country || 'N/A'}, {alert.location?.city || 'N/A'}
                   </span>
-                  {alert.location?.latitude && (
+                  {alert.location?.lat !== undefined && (
+                    <span className="block text-[11px] text-slate-500 font-mono">
+                      {alert.location.lat.toFixed(4)}, {alert.location.lng?.toFixed(4)}
+                    </span>
+                  )}
+                  {alert.location?.latitude !== undefined && (
                     <span className="block text-[11px] text-slate-500 font-mono">
                       {alert.location.latitude.toFixed(4)}, {alert.location.longitude?.toFixed(4)}
                     </span>
@@ -184,16 +203,16 @@ export default function AlertDetailDrawer({ alert, onClose, onStatusUpdated }) {
           {/* Audit Notes Timeline */}
           <div className="space-y-2">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-slate-400" /> Audit Notes ({alert.notes?.length || 0})
+              <FileText className="w-3.5 h-3.5 text-slate-400" /> Notes Timeline ({alert.notes?.length || 0})
             </h3>
-            <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
               {alert.notes && alert.notes.length > 0 ? (
                 alert.notes.map((note, idx) => (
                   <div key={idx} className="p-2.5 rounded-lg bg-slate-950/50 border border-slate-800/70 text-xs">
                     <div className="flex items-center justify-between text-slate-400 mb-1">
-                      <span className="font-semibold text-slate-300">{note.author}</span>
+                      <span className="font-semibold text-slate-200">{note.author}</span>
                       <span className="text-[10px] text-slate-500 font-mono">
-                        {note.createdAt ? new Date(note.createdAt).toLocaleTimeString() : ''}
+                        {note.createdAt ? new Date(note.createdAt).toLocaleString() : ''}
                       </span>
                     </div>
                     <p className="text-slate-300">{note.text}</p>
@@ -209,14 +228,14 @@ export default function AlertDetailDrawer({ alert, onClose, onStatusUpdated }) {
         {/* Drawer Footer: Actions */}
         <div className="p-5 border-t border-slate-800 bg-slate-950/80 space-y-3">
           {errorMsg && (
-            <div className="p-2 rounded bg-red-950/50 border border-red-800 text-red-300 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
+            <div className="p-2.5 rounded-lg bg-red-950/60 border border-red-800/80 text-red-300 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
               <span>{errorMsg}</span>
             </div>
           )}
           {successMsg && (
-            <div className="p-2 rounded bg-emerald-950/50 border border-emerald-800 text-emerald-300 text-xs flex items-center gap-2">
-              <Check className="w-4 h-4 shrink-0" />
+            <div className="p-2.5 rounded-lg bg-emerald-950/60 border border-emerald-800/80 text-emerald-300 text-xs flex items-center gap-2">
+              <Check className="w-4 h-4 shrink-0 text-emerald-400" />
               <span>{successMsg}</span>
             </div>
           )}
@@ -225,7 +244,7 @@ export default function AlertDetailDrawer({ alert, onClose, onStatusUpdated }) {
           <div className="relative">
             <input
               type="text"
-              placeholder="Add investigation note (optional)..."
+              placeholder="Add investigation or audit note..."
               value={analystNote}
               onChange={(e) => setAnalystNote(e.target.value)}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -233,7 +252,7 @@ export default function AlertDetailDrawer({ alert, onClose, onStatusUpdated }) {
           </div>
 
           {/* Action Transition Buttons */}
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {canInvestigate && (
               <button
                 type="button"
@@ -245,6 +264,18 @@ export default function AlertDetailDrawer({ alert, onClose, onStatusUpdated }) {
               </button>
             )}
 
+            {canReopen && (
+              <button
+                type="button"
+                disabled={isUpdating}
+                onClick={() => handleStatusChange('INVESTIGATING')}
+                className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-semibold transition-colors flex items-center gap-1"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Reopen Investigation
+              </button>
+            )}
+
             {canResolve && (
               <button
                 type="button"
@@ -253,6 +284,29 @@ export default function AlertDetailDrawer({ alert, onClose, onStatusUpdated }) {
                 className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
               >
                 Resolve Threat
+              </button>
+            )}
+
+            {canReQueue && (
+              <button
+                type="button"
+                disabled={isUpdating}
+                onClick={() => handleStatusChange('OPEN')}
+                className="px-3 py-1.5 rounded-lg bg-blue-600/80 hover:bg-blue-600 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
+              >
+                Return to Queue
+              </button>
+            )}
+
+            {canAddNoteOnly && analystNote.trim().length > 0 && (
+              <button
+                type="button"
+                disabled={isUpdating}
+                onClick={() => handleStatusChange('INVESTIGATING')}
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold transition-colors flex items-center gap-1"
+              >
+                <Send className="w-3 h-3" />
+                Add Note Only
               </button>
             )}
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import SeverityBadge from './SeverityBadge';
 import RiskScoreBar from './RiskScoreBar';
-import { ExternalLink, AlertCircle, MapPin, Store, User, Clock } from 'lucide-react';
+import { ExternalLink, AlertCircle, MapPin, Store, User, Clock, ChevronLeft, ChevronRight, Radio } from 'lucide-react';
 
 const STATUS_BADGE = {
   OPEN: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
@@ -15,6 +15,11 @@ export default function AlertFeed({
   recentAlertIds = new Set(),
   onSelectAlert,
   isLoading = false,
+  page = 1,
+  setPage,
+  totalPages = 1,
+  totalCount = 0,
+  limit = 20,
 }) {
   if (isLoading && alerts.length === 0) {
     return (
@@ -37,9 +42,11 @@ export default function AlertFeed({
     );
   }
 
+  const isLiveActive = page === 1;
+
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/60 backdrop-blur-sm overflow-hidden">
-      <div className="overflow-x-auto">
+    <div className="rounded-xl border border-slate-800 bg-slate-900/60 backdrop-blur-sm overflow-hidden flex flex-col">
+      <div className="overflow-x-auto flex-1">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-slate-800 bg-slate-950/60 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
@@ -161,6 +168,53 @@ export default function AlertFeed({
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Pagination Footer */}
+      <div className="px-4 py-3 border-t border-slate-800 bg-slate-950/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2 text-slate-400">
+          {isLiveActive ? (
+            <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
+              <Radio className="w-3.5 h-3.5 animate-pulse" />
+              Live prepending active (Page 1)
+            </span>
+          ) : (
+            <span className="text-amber-400">
+              Historical mode (Page {page}) - Live prepending paused
+            </span>
+          )}
+          <span className="text-slate-600">|</span>
+          <span>
+            Total: <strong className="text-slate-200">{totalCount.toLocaleString()}</strong> alerts
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-slate-400">
+            Page <strong className="text-slate-200">{page}</strong> of{' '}
+            <strong className="text-slate-200">{totalPages || 1}</strong>
+          </span>
+
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => setPage(Math.max(1, page - 1))}
+            className="p-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors"
+            title="Previous Page"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          <button
+            type="button"
+            disabled={page >= totalPages}
+            onClick={() => setPage(page + 1)}
+            className="p-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors"
+            title="Next Page"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   );

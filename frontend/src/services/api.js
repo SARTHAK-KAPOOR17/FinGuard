@@ -21,8 +21,8 @@ const ADMIN_API_KEY = import.meta.env.VITE_ADMIN_API_KEY || '';
  */
 export async function fetchAlerts(params = {}) {
   const query = new URLSearchParams();
-  if (params.page) query.set('page', params.page);
-  if (params.limit) query.set('limit', params.limit);
+  query.set('page', params.page || 1);
+  query.set('limit', params.limit || 20);
   if (params.severity && params.severity !== 'ALL') query.set('severity', params.severity);
   if (params.status && params.status !== 'ALL') query.set('status', params.status);
   if (params.userId && params.userId.trim()) query.set('userId', params.userId.trim());

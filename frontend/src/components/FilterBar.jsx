@@ -79,8 +79,8 @@ export default function FilterBar({
               onChange={(e) => setSort(e.target.value)}
               className="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             >
-              <option value="createdAt">Newest First</option>
-              <option value="riskScore">Highest Risk Score</option>
+              <option value="-createdAt">Newest First</option>
+              <option value="-riskScore">Highest Risk Score</option>
             </select>
           </div>
         </div>
