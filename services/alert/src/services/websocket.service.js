@@ -20,7 +20,7 @@ class WebSocketService {
 
     this.io = new Server(server, {
       cors: {
-        origin: this.dashboardOrigin,
+        origin: [this.dashboardOrigin, 'http://localhost:5173', 'http://localhost:3000'].filter(Boolean),
         methods: ['GET', 'POST'],
         credentials: true,
       },

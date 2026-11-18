@@ -190,6 +190,36 @@ The Alert Service runs on port `3003`, consuming `transactions.flagged` and broa
 
 ---
 
+## FinGuard Real-Time Operations Dashboard (`frontend/`)
+
+A React 19 + Vite 8 + Tailwind CSS frontend dashboard providing fraud analysts with live threat surveillance, metrics, and incident triage.
+
+### Quick Start
+```bash
+# Start frontend dev server on http://localhost:5173
+npm run dashboard:dev
+
+# Or navigate to directory
+cd frontend
+npm install
+npm run dev
+```
+
+### Architecture & Capabilities
+- **Live WebSocket Feed**: Connects to Alert Service (`http://localhost:3003/socket.io`) with automatic reconnect, exponential backoff (1s - 5s max), and live connection badge (`Connected`, `Reconnecting`, `Disconnected`).
+- **200 In-Memory Ring Buffer**: Live feed keeps the latest 200 alerts in-memory with FIFO eviction. Newly received alerts animate with a red alert pulse.
+- **Severity Room Subscription**: Filtering by severity dynamically unsubscribes from previous channels and subscribes to `severity:<LEVEL>` to isolate high-priority traffic.
+- **Authoritative Metrics Cards**: Real-time counter increments on every `alert:new`, with an automated 30-second background resync via `GET /alerts/stats` to ensure consistency with MongoDB aggregations.
+- **Incident Inspection Drawer**: Click any alert row to view metadata, geographic coordinates, triggered rule breakdown, and status transition workflows (`OPEN` -> `INVESTIGATING` -> `RESOLVED` / `DISMISSED`).
+
+> [!WARNING]
+> **Security Notice regarding `VITE_ADMIN_API_KEY`:**
+> Any environment variable prefixed with `VITE_` is baked directly into the client-side JavaScript bundle and is visible to any browser visitor. In this development setup, `VITE_ADMIN_API_KEY` is provided in `.env` for local testing only. In production environments, never expose admin keys in the browser bundle; all privileged status modifications must be routed through an authenticated backend-for-frontend (BFF) session or reverse proxy with user-level RBAC.
+
+---
+
+---
+
 ## Transaction Simulator CLI
 
 ```bash
