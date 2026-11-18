@@ -93,7 +93,11 @@ class TrafficGenerator {
 
     if (patternType === 'large_amount') {
       const amount = parseFloat((this.prng.nextFloat() * 75000 + 10000).toFixed(2));
-      const merchant = this.prng.pick(LUXURY_MERCHANTS);
+      // ~50% normal merchants (so RULE_LARGE_AMOUNT fires alone with HIGH severity)
+      // ~50% luxury merchants (combining with RULE_SUSPICIOUS_MERCHANT -> CRITICAL)
+      const merchant = this.prng.nextFloat() < 0.5
+        ? this.prng.pick(NORMAL_MERCHANTS)
+        : this.prng.pick(LUXURY_MERCHANTS);
       const txn = {
         ...this._generateNormalTxn(user),
         amount,
