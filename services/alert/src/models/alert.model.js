@@ -165,6 +165,8 @@ AlertSchema.index({ severity: 1, createdAt: -1 });
 AlertSchema.index({ status: 1, createdAt: -1 });
 AlertSchema.index({ userId: 1, createdAt: -1 });
 AlertSchema.index({ riskScore: -1, createdAt: -1 });
+AlertSchema.index({ 'matchedRules.ruleId': 1, createdAt: -1 });
+AlertSchema.index({ createdAt: -1 });
 
 const Alert = mongoose.model('Alert', AlertSchema);
 
