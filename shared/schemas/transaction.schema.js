@@ -75,18 +75,6 @@ const transactionSchema = Joi.object({
 });
 
 /**
- * Batch transaction schema (1 to 500 transactions)
- */
-const batchTransactionSchema = Joi.object({
-  transactions: Joi.array().items(transactionSchema).min(1).max(500).required().messages({
-    'array.base': 'transactions must be an array',
-    'array.min': 'transactions array must contain at least 1 transaction',
-    'array.max': 'transactions array cannot exceed 500 transactions per batch',
-    'any.required': 'transactions array is required',
-  }),
-});
-
-/**
  * Validates a single transaction payload.
  *
  * @param {object} data
@@ -110,33 +98,79 @@ function validateTransaction(data) {
   return { error: formattedErrors, value };
 }
 
-/**
- * Validates a batch transaction payload.
- *
- * @param {object} data
- * @returns {{ error: Array<{field: string, message: string}> | null, value: object }}
- */
-function validateBatchTransactions(data) {
-  const { error, value } = batchTransactionSchema.validate(data, {
-    abortEarly: false,
-    stripUnknown: true,
-  });
+const MAX_BATCH_SIZE = 500;
 
-  if (!error) {
-    return { error: null, value };
+/**
+ * Validates a batch of transactions and gathers per-item errors with their index.
+ *
+ * @param {Array|object} batchData - Array of transactions or object containing transactions array
+ * @returns {{
+ *   validItems: Array<{index: number, item: object}>,
+ *   errors: Array<{index: number, field: string, message: string}>,
+ *   batchError: string | null
+ * }}
+ */
+function validateBatchItems(batchData) {
+  const items = Array.isArray(batchData) ? batchData : batchData?.transactions;
+
+  if (!Array.isArray(items)) {
+    return {
+      validItems: [],
+      errors: [],
+      batchError: 'Payload must be an array of transactions or an object with a "transactions" array',
+    };
   }
 
-  const formattedErrors = error.details.map((detail) => ({
-    field: detail.path.join('.'),
-    message: detail.message,
-  }));
+  if (items.length === 0) {
+    return {
+      validItems: [],
+      errors: [],
+      batchError: 'Batch must contain at least 1 transaction',
+    };
+  }
 
-  return { error: formattedErrors, value };
+  if (items.length > MAX_BATCH_SIZE) {
+    return {
+      validItems: [],
+      errors: [],
+      batchError: `Batch size of ${items.length} exceeds maximum limit of ${MAX_BATCH_SIZE} transactions`,
+    };
+  }
+
+  const validItems = [];
+  const errors = [];
+
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index];
+    const { error, value } = transactionSchema.validate(item, {
+      abortEarly: false,
+      stripUnknown: true,
+    });
+
+    if (error) {
+      error.details.forEach((detail) => {
+        errors.push({
+          index,
+          field: detail.path.join('.'),
+          message: detail.message,
+        });
+      });
+    } else {
+      validItems.push({ index, item: value });
+    }
+  }
+
+  return {
+    validItems,
+    errors,
+    batchError: null,
+  };
 }
 
 module.exports = {
+  MAX_BATCH_SIZE,
+  locationSchema,
   transactionSchema,
-  batchTransactionSchema,
   validateTransaction,
-  validateBatchTransactions,
+  validateBatchItems,
 };

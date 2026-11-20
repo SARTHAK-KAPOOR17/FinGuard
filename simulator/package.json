@@ -8,7 +8,8 @@
   },
   "scripts": {
     "start": "node src/index.js",
-    "simulate": "node src/index.js"
+    "simulate": "node src/index.js",
+    "test": "jest --runInBand"
   },
   "dependencies": {
     "@finguard/shared": "*",
